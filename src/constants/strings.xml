@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Common -->
+    <string name="next">Next</string>
+    <string name="login">Login</string>
+    <string name="register">Register</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="home">Home</string>
+    <string name="reset">Reset</string>
+    <string name="sending">Sending...</string>
+    <string name="logging_in">Logging in...</string>
+    <string name="setting_password">Setting Password...</string>
+    <string name="set_password">Set Password</string>
+    <string name="resend">Resend</string>
+    <string name="verify">Verify</string>
+    <string name="verifying">Verifying</string>
+    
+    <!-- SplashScreen -->
+    <string name="drive">Drive.</string>
+    <string name="deliver">Deliver.</string>
+    <string name="earn">Earn</string>
+    
+    <!-- LoginScreen -->
+    <string name="login_subtitle">Enter your email and Password to log in.</string>
+    <string name="enter_your_email">Enter your email</string>
+    <string name="enter_your_password">Enter your password</string>
+    <string name="forgot_password">Forgot Password?</string>
+    <string name="dont_have_account">Don't have an account? </string>
+    <string name="email_required">Email is required</string>
+    <string name="invalid_email">Invalid email address</string>
+    <string name="password_required">Password is required</string>
+    <string name="password_min_length">Password must be at least 6 characters</string>
+    <string name="login_failed">Login failed. Please try again.</string>
+    <string name="login_successful">Login Successful 🎉</string>
+    
+    <!-- RegisterScreen -->
+    <string name="register_subtitle">Join Truck'n Bike as a verified driver</string>
+    <string name="full_name">Full Name</string>
+    <string name="enter_full_name">Enter your full name</string>
+    <string name="phone_number">Phone Number</string>
+    <string name="enter_phone_number">Enter phone number</string>
+    <string name="identity_document">Identity Document Or Passport</string>
+    <string name="upload_identity_document">Upload Identity Document / Passport</string>
+    <string name="upload_id">Upload ID</string>
+    <string name="upload_clear_selfie">Upload clear Selfie picture</string>
+    <string name="upload_clear_selfie_photo">Upload clear selfie photo</string>
+    <string name="address">Address</string>
+    <string name="street_address_1">Street Address 1</string>
+    <string name="street_address_2">Street Address 2</string>
+    <string name="enter_address">Enter Address</string>
+    <string name="country">Country</string>
+    <string name="select_country">Select your country</string>
+    <string name="city">City</string>
+    <string name="enter_city">Enter city</string>
+    <string name="state_province">State/Province</string>
+    <string name="select_state">Select your state</string>
+    <string name="zip_code">Zip Code</string>
+    <string name="enter_zip_code">Enter zip code</string>
+    <string name="upload_proof_address">Upload proof of address</string>
+    <string name="upload_utility_bill">Upload utility bill / affidavit</string>
+    <string name="vehicle_information">Vehicle Information</string>
+    <string name="make">Make</string>
+    <string name="modal_year">Modal(Year)</string>
+    <string name="vehicle_trailer">Vehicle Trailer</string>
+    <string name="select_trailer_type">Select trailer type</string>
+    <string name="vehicle_color">Vehicle Color</string>
+    <string name="vehicle_registration_number">Vehicle Registration Number</string>
+    <string name="vehicle_measurements">Vehicle Measurments</string>
+    <string name="feet">Feet</string>
+    <string name="meters">Meters</string>
+    <string name="width">Width</string>
+    <string name="height">Height</string>
+    <string name="length">Length</string>
+    <string name="vehicle_photos">Vehicle Photos</string>
+    <string name="front">Front</string>
+    <string name="side">Side</string>
+    <string name="back">Back</string>
+    <string name="documents">Documents</string>
+    <string name="vehicle_registration">Vehicle Registration</string>
+    <string name="insurance">Insurance</string>
+    <string name="drivers_license">Driver's License</string>
+    <string name="upload_driving_license">Upload Driving License</string>
+    <string name="back">Back</string>
+    <string name="registering">Registering...</string>
+    <string name="already_have_account">Already have an account?</string>
+    <string name="select_country_code">Select Country Code</string>
+    <string name="select_country_title">Select Country</string>
+    <string name="select_state_title">Select State</string>
+    <string name="select_vehicle_trailer">Select Vehicle Trailer</string>
+    <string name="close">Close</string>
+    <!-- Validation messages -->
+    <string name="full_name_required">Full name is required</string>
+    <string name="email_required">Email is required</string>
+    <string name="phone_required">Phone number is required</string>
+    <string name="address_required">Address is required</string>
+    <string name="country_required">Country is required</string>
+    <string name="state_required">State is required</string>
+    <string name="city_required">City is required</string>
+    <string name="zip_code_required">Zip code is required</string>
+    <string name="identity_document_required">Identity document is required</string>
+    <string name="id_upload_required">ID upload is required</string>
+    <string name="selfie_photo_required">Selfie photo is required</string>
+    <string name="proof_address_required">Proof of address is required</string>
+    <string name="password_required">Password is required</string>
+    <string name="confirm_password_required">Confirm Password is required</string>
+    <string name="vehicle_make_required">Vehicle make is required</string>
+    <string name="vehicle_year_required">Vehicle year is required</string>
+    <string name="vehicle_color_required">Vehicle color is required</string>
+    <string name="vehicle_trailer_required">Vehicle Trailer is required</string>
+    <string name="registration_number_required">Registration number is required</string>
+    <string name="vehicle_width_required">Vehicle width is required</string>
+    <string name="vehicle_height_required">Vehicle height is required</string>
+    <string name="vehicle_length_required">Vehicle length is required</string>
+    <string name="vehicle_front_photo_required">Vehicle front photo is required</string>
+    <string name="vehicle_side_photo_required">Vehicle side photo is required</string>
+    <string name="vehicle_back_photo_required">Vehicle back photo is required</string>
+    <string name="vehicle_registration_required">Vehicle registration document is required</string>
+    <string name="insurance_required">Insurance document is required</string>
+    <string name="driving_license_required">Driving license document is required</string>
+    <string name="valid_phone_number">Please enter a valid phone number (10-15 digits)</string>
+    <string name="valid_zip_code">Please enter a valid zip code (4 or 6 digits)</string>
+    <string name="registration_successful">Registration Successful</string>
+    
+    <!-- ReviewScreen -->
+    <string name="profile_under_review">Profile Under Review</string>
+    <string name="details_being_verified">Your Details Are Being Verified</string>
+    <string name="review_message">We are reviewing your details. This won't take long.\nWe'll notify you once approved.</string>
+    
+    <!-- ForgotPasswordScreen -->
+    <string name="forgot_password_title">Forgot Password</string>
+    <string name="forgot_password_subtitle">Enter your email address to reset password</string>
+    <string name="valid_email_required">Please enter a valid email address</string>
+    <string name="failed_send_otp">Failed to send OTP</string>
+    <string name="something_went_wrong">Something went wrong. Please try again.</string>
+    
+    <!-- ResetPasswordScreen -->
+    <string name="reset_password_title">Reset Password</string>
+    <string name="reset_password_subtitle">Create a new password for your account</string>
+    <string name="new_password">New Password</string>
+    <string name="enter_new_password">Enter new password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="confirm_password_placeholder">Confirm password</string>
+    <string name="password_min_6_chars">Password must be at least 6 characters</string>
+    <string name="password_requirements">Password must contain numbers, letters and special characters</string>
+    <string name="passwords_not_match">Passwords do not match</string>
+    <string name="confirm_password_required">Confirm password is required</string>
+    <string name="failed_reset_password">Failed to reset password</string>
+    <string name="password_reset_successful">Password reset successful 🎉</string>
+    
+    <!-- EmailVerifyScreen -->
+    <string name="enter_your_otp">Enter Your OTP</string>
+    <string name="enter_otp_sent_to_email">Enter OTP sent to your email address</string>
+    <string name="didnt_receive_otp">Didn't receive OTP?</string>
+    <string name="resend">Resend</string>
+    <string name="sending">Sending...</string>
+    <string name="resend_in_seconds">Resend in {0}s</string>
+    <string name="verifying">Verifying</string>
+    <string name="verify">Verify</string>
+    <string name="email_not_found">Email not found</string>
+    <string name="please_enter_6_digit_otp">Please enter 6 digit OTP</string>
+    <string name="otp_verification_failed">OTP verification failed. Please try again.</string>
+    <string name="failed_to_resend_otp">Failed to resend OTP</string>
+    <string name="otp_sent_successfully">OTP sent successfully</string>
+    
+    <!-- Common file size -->
+    <string name="kb">KB</string>
+</resources>

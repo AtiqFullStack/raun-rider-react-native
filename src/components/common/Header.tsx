@@ -1,0 +1,412 @@
+import {
+  Animated,
+  Image,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import LinearGradient from 'react-native-linear-gradient';
+import BackIcon from '../../assets/svg/chevron_big_left.svg';
+import TruckSvg from '../../assets/svg/truckSVG.svg';
+import { fontScale, scale, vw } from '../../utils/scaling';
+import { useNavigation } from '@react-navigation/native';
+import { Colors } from '../../constants/Colors';
+import Bell from '../../assets/svg/bell.svg';
+import { switchIcon } from '../../utils/config';
+import { useAuth } from '../../context/AuthContext';
+import { fullNameConverter, imgaeUrlConverter } from '../../utils/converter';
+import { api } from '../../services/apiClient';
+import { useSocket } from '../../hooks/useSocket';
+import Profile from '../../assets/svg/profilre.svg';
+import Toast from 'react-native-toast-message';
+import ForegroundService, { registerLocationModalHandler } from '../../services/BankgroundSync';
+import usePermissions from '../../hooks/usePermissions';
+import BellSvgCode from '../../assets/svg/BellCodeSvg';
+
+const NAVY = '#011E4A';
+const GOLD = '#D0A645';
+
+export default function Header(props: any) {
+  const navigation = useNavigation<any>();
+  const { requestLocationPermissionsBg, LocationPermissionModal: BgLocationPermissionModal } = usePermissions();
+
+  const {
+    showBadge = true,
+    showNotification = true,
+    simpleHeader = true,
+    simpleHeaderTitle = '',
+    showBackButton = true,
+  } = props;
+
+  const { user, setUser, isOnline, setIsOnline } = useAuth();
+  const { socket } = useSocket();
+  const modalResolveRef = React.useRef<((v: boolean) => void) | null>(null);
+
+  // ── Animation refs ──────────────────────────────────────────
+  const thumbAnim = useRef(new Animated.Value(isOnline ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(thumbAnim, {
+      toValue: isOnline ? 1 : 0,
+      useNativeDriver: true,
+      tension: 60,
+      friction: 8,
+    }).start();
+  }, [isOnline]);
+
+  React.useEffect(() => {
+    registerLocationModalHandler((onAllow, onDeny) => {
+      modalResolveRef.current = (v) => (v ? onAllow() : onDeny());
+    });
+  }, []);
+
+  const isMounted = React.useRef(false);
+  useEffect(() => {
+    if (!isMounted.current) { isMounted.current = true; return; }
+    if (isOnline) {
+      requestLocationPermissionsBg().then(perm => { if (perm) ForegroundService.start(); });
+    } else {
+      ForegroundService.stop();
+    }
+  }, [isOnline]);
+
+  const gotoOnline = async () => {
+    const perm = await requestLocationPermissionsBg();
+    if (!perm) return;
+    try {
+      const res = await api.post('/user/auth/isOnline', { status: !isOnline });
+      if (res.data.success) {
+        setIsOnline(!isOnline);
+        setUser((pre: any) => ({ ...pre, isOnline: !isOnline }));
+        const payload = { driverID: user.driverID, lat: 0, long: 0 };
+        socket?.emit(!isOnline ? 'DRIVER_ONLINE' : 'DRIVER_OFFLINE', payload);
+        Toast.show({ type: 'info', text1: !isOnline ? 'You are now online' : 'You are now offline' });
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const profileImageUri = user?.selfiePhoto
+    ? user.selfiePhoto.startsWith('file://')
+      ? imgaeUrlConverter(user.selfiePhoto)
+      : `${imgaeUrlConverter(user.selfiePhoto)}?t=${user.updatedAt || Date.now()}`
+    : null;
+  const hideDriverInfo = !simpleHeader && simpleHeaderTitle === 'Trips';
+
+  return (
+    <LinearGradient
+      colors={[NAVY, '#01285E', '#02306B', NAVY]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[
+        styles.container,
+        {
+          paddingTop:
+            Platform.OS === 'ios'
+              ? scale(10)
+              : (StatusBar.currentHeight || 0) + scale(8),
+        },
+      ]}
+    >
+      <BgLocationPermissionModal />
+
+
+      {simpleHeader ? (
+        <View style={[styles.row, {
+          paddingVertical: 10
+        }]}>
+          {showBackButton && (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.backBtn}
+            >
+              <BackIcon color={Colors.white} />
+            </TouchableOpacity>
+          )}
+          <Text style={styles.simpleTitle}>{simpleHeaderTitle}</Text>
+        </View>
+      ) : (
+
+        <View style={styles.row}>
+          {!hideDriverInfo && (
+            <View style={styles.avatarRing}>
+              <Image
+                style={styles.avatar}
+                source={profileImageUri ? { uri: profileImageUri } : Profile}
+              />
+            </View>
+          )}
+
+          {/* Name */}
+          <View style={[styles.driverInfo, hideDriverInfo && styles.tripHeaderTitleWrap]}>
+            {!hideDriverInfo && (
+              <>
+                <Text style={styles.greeting}>Welcome back 👋</Text>
+                <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                  {fullNameConverter(user?.firstName, user?.surName)}
+                </Text>
+              </>
+            )}
+
+
+{showBackButton && (
+           <View style={[styles.row, {
+          paddingVertical: 10
+        }]}>
+          
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.backBtn}
+            >
+              <BackIcon color={Colors.white} />
+            </TouchableOpacity>
+          <Text style={styles.simpleTitle}>{simpleHeaderTitle}</Text>
+        </View>
+          )}
+
+          </View>
+
+          {/* Online / Offline toggle */}
+          {showBadge && (
+            <TouchableOpacity
+              onPress={gotoOnline}
+              activeOpacity={0.9}
+              style={styles.toggleWrapper}
+            >
+              <View
+                style={[
+                  styles.switchTrack,
+                  {
+                    backgroundColor: isOnline
+                      ? 'rgba(20,120,58,0.25)'
+                      : 'rgba(180,35,35,0.22)',
+                  },
+                ]}
+              >
+                <Animated.View
+                  style={[
+                    styles.switchThumb,
+                    {
+                      backgroundColor: isOnline ?Colors.green : '#E53935'   ,
+                      transform: [
+                        {
+                          translateX: thumbAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [2, 30],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <Image source={switchIcon} style={styles.thumbIcon} />
+                </Animated.View>
+              </View>
+
+              <Text
+                style={[
+                  styles.toggleLabel,
+                  {
+                    color: isOnline ? '#6EEB83' : '#6EEB83',
+                  },
+                ]}
+              >
+                 {isOnline ? 'Online' : 'Go Online'}
+              </Text>
+            </TouchableOpacity>
+          ) }
+          {showNotification && (
+            <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('Notification')}>
+              {/* <Bell /> */}
+              <BellSvgCode />
+            </TouchableOpacity>)}
+        </View>
+      )}
+
+      {/* Gold bottom accent */}
+      <View style={styles.goldBar} />
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    width: vw(100),
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+    overflow: 'hidden',
+    paddingHorizontal: vw(4),
+  },
+  decorStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: scale(6),
+  },
+  goldDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: GOLD,
+  },
+  goldLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: GOLD,
+    opacity: 0.3,
+    marginHorizontal: 5,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    paddingBottom: scale(14),
+  },
+  backBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(208,166,69,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(208,166,69,0.35)',
+    marginRight: 10,
+  },
+  simpleTitle: {
+    fontSize: fontScale(16),
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 0.3,
+  },
+  avatarRing: {
+    borderWidth: 2,
+    borderColor: GOLD,
+    borderRadius: 50,
+    padding: 2,
+  },
+  avatar: {
+    height: 44,
+    width: 44,
+    borderRadius: 44,
+  },
+  driverInfo: {
+    flex: 1,
+    marginLeft: vw(3),
+  },
+  tripHeaderTitleWrap: {
+    marginLeft: 0,
+  },
+  greeting: {
+    fontSize: fontScale(11),
+    color: GOLD,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+  driverName: {
+    fontSize: fontScale(16),
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 0.2,
+  },
+  toggleWrapper: {
+    alignItems: 'center',
+    gap: 2,
+    marginRight:14
+  },
+  track: {
+    width: 80,
+    height: 35,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: GOLD,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  trackLabel: {
+    fontSize: fontScale(10),
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    zIndex: 0,
+  },
+  thumb: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 10,
+  },
+
+
+  bellBtn: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1.5,
+    borderColor: GOLD,
+  },
+  goldBar: {
+    height: 3,
+    width: '100%',
+    backgroundColor: GOLD,
+    borderRadius: 2,
+  },
+
+
+  switchTrack: {
+    width: 52,
+    height: 28,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+
+  switchThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    position: 'absolute',
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.white,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 3,
+  },
+
+  thumbIcon: {
+    width: 12,
+    height: 12,
+    tintColor: Colors.white,
+  },
+
+  toggleLabel: {
+    marginTop: 5,
+    fontSize: fontScale(10),
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+
+});
