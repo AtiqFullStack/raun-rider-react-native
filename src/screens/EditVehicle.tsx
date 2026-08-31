@@ -37,6 +37,9 @@ type VehicleCategory = {
   _id: string;
   name: string;
   icon: string;
+  // updated: now an array of populated service objects
+  serviceIds?: { _id: string; name: string; title: string }[];
+  /** @deprecated legacy single serviceId — kept for backward compat display */
   serviceId?: { _id: string; name: string; title: string } | null;
 };
 type VehicleSubcategory = {
@@ -92,11 +95,21 @@ const EditVehicleScreen = () => {
   const scrollRef = useRef<ScrollView>(null);
   const { appServices, loadingServices } = useAppServices();
 
-  const filteredCategories = selectedServices.length > 0
-    ? categories.filter(c =>
-        c.serviceId && selectedServices.some(s => s._id === c.serviceId!._id)
-      )
-    : categories;
+  /**
+   * Filter categories by selected services using INTERSECTION logic:
+   * - 0 services selected → show all categories
+   * - 1 service selected  → categories that belong to that service
+   * - 2+ services selected → categories that belong to ALL selected services
+   *   (so a "Bike" that supports both Food & Parcel appears when both are chosen,
+   *    but a "Truck" that only supports Parcel is hidden when Food is also selected)
+   */
+  const filteredCategories = selectedServices.length === 0
+    ? categories
+    : categories.filter(c => {
+        const catServiceIds = (c.serviceIds ?? []).map(s => s._id);
+        // Every selected service must be present in the category's serviceIds
+        return selectedServices.every(s => catServiceIds.includes(s._id));
+      });
 
   // Subcategory required only when PARCEL service is selected
   const needsSubcategory = selectedServices.some(s => s.name === 'PARCEL');
@@ -340,7 +353,7 @@ const EditVehicleScreen = () => {
   const fetchCategories = async () => {
     try {
       setLoadingCategories(true);
-      const res = await fetch(`${BASE_URL}/admin/category/getCategoriesAdmin`);
+      const res = await fetch(`${BASE_URL}/admin/vehicle-categories`);
       const data = await res.json();
       if (data.success) setCategories(data.data);
     } catch (e) {
@@ -501,17 +514,38 @@ const clearImageError = (slot: ImageSlot) => {
         >
           <Text style={styles.label}>SERVICES</Text>
           <TouchableOpacity
-            style={[styles.dropdownField, errors.services ? styles.inputError : null]}
+            style={[
+              styles.dropdownField,
+              errors.services ? styles.inputError : null,
+              selectedServices.length > 0 && { height: undefined, minHeight: verticalScale(60), paddingVertical: verticalScale(10), flexWrap: 'wrap', gap: scale(6) },
+            ]}
             activeOpacity={0.8}
             onPress={() => setShowServicesSheet(true)}
           >
-            <Text
-              style={[styles.dropdownText, selectedServices.length === 0 && styles.placeholder]}
-              numberOfLines={1}
-            >
-              {selectedServices.length > 0 ? selectedServices.map(s => s.title).join(', ') : 'Select services'}
-            </Text>
-            <DropdownIcon width={12} height={12} />
+            {selectedServices.length > 0 ? (
+              <>
+                {selectedServices.map(s => (
+                  <View key={s._id} style={styles.serviceChip}>
+                    <Text style={styles.serviceChipText}>{s.title || s.name}</Text>
+                    <TouchableOpacity
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      onPress={() => {
+                        setSelectedServices(prev => prev.filter(x => x._id !== s._id));
+                        if (s.name === 'PARCEL') setSelectedSubcategory(null);
+                      }}
+                    >
+                      <Text style={styles.serviceChipRemove}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <DropdownIcon width={12} height={12} style={{ alignSelf: 'center' }} />
+              </>
+            ) : (
+              <>
+                <Text style={[styles.dropdownText, styles.placeholder]}>Select services</Text>
+                <DropdownIcon width={12} height={12} />
+              </>
+            )}
           </TouchableOpacity>
           {errors.services ? <Text style={styles.errorText}>{errors.services}</Text> : null}
         </View>
@@ -536,8 +570,10 @@ const clearImageError = (slot: ImageSlot) => {
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dropdownText}>{selectedCategory.name}</Text>
-                  {selectedCategory.serviceId && (
-                    <Text style={styles.categoryServiceBadge}>{selectedCategory.serviceId.title}</Text>
+                  {(selectedCategory.serviceIds ?? []).length > 0 && (
+                    <Text style={styles.categoryServiceBadge}>
+                      {selectedCategory.serviceIds!.map(s => s.title || s.name).join(' · ')}
+                    </Text>
                   )}
                 </View>
               </View>
@@ -910,7 +946,7 @@ const clearImageError = (slot: ImageSlot) => {
                     if (!isSelected) setErrors(p => ({ ...p, services: '' }));
                   }}
                 >
-                  <Text style={styles.sheetItemText}>{item.title}</Text>
+                  <Text style={styles.sheetItemText}>{item.title  || item?.name}</Text>
                   <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                     {isSelected && <CheckIcon width={14} height={14} />}
                   </View>
@@ -955,8 +991,10 @@ const clearImageError = (slot: ImageSlot) => {
                   )}
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.sheetItemText}>{item.name}</Text>
-                    {item.serviceId && (
-                      <Text style={styles.categoryServiceBadge}>{item.serviceId.title}</Text>
+                    {(item.serviceIds ?? []).length > 0 && (
+                      <Text style={styles.categoryServiceBadge}>
+                        {item.serviceIds!.map(s => s.title || s.name).join(' · ')}
+                      </Text>
                     )}
                   </View>
                   {isSelected && <CheckIcon width={18} height={18} />}
@@ -1309,6 +1347,25 @@ imageTopLabel: {
     fontSize: fontScale(16),
     fontFamily: 'Rubik-Medium',
     color: '#0D1633',
+  },
+  serviceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF0E7',
+    borderRadius: 20,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(5),
+    gap: scale(6),
+  },
+  serviceChipText: {
+    fontSize: fontScale(13),
+    fontFamily: 'Rubik-SemiBold',
+    color: '#E85D04',
+  },
+  serviceChipRemove: {
+    fontSize: fontScale(12),
+    color: '#E85D04',
+    fontFamily: 'Rubik-Bold',
   },
   inputError: {
     borderWidth: 1.5,
