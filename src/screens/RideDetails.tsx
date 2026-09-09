@@ -1397,7 +1397,7 @@ const styles = StyleSheet.create({
     bottom: 30,
     left: 20,
     right: 20,
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -1471,7 +1471,7 @@ const styles = StyleSheet.create({
 
 hideModalBtnText: {
   fontSize: fontScale(15),
-  color: Colors.red,
+  color: Colors.secondaryDark,
   fontWeight: 700,
   lineHeight: scale(24),
 },
@@ -1485,7 +1485,7 @@ tripDetailsBtn: {
   bottom: scale(25),
   left: scale(20),
   right: scale(20),
-  backgroundColor: Colors.red,
+  backgroundColor: Colors.secondaryDark,
   height: scale(50),
   borderRadius: scale(12),
   justifyContent: 'center',
@@ -1537,7 +1537,7 @@ tripDetailsBtnText: {
   navigateBtn: {
     // flex: 1,
     flexDirection: 'row',
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     height: scale(45),
     borderRadius: scale(10),
     justifyContent: 'center',
@@ -1614,7 +1614,7 @@ tripDetailsBtnText: {
   },
   startBtn: {
     flex: 1,
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     height: scale(50),
     borderRadius: scale(10),
     justifyContent: 'center',
@@ -1703,7 +1703,7 @@ completeSubtitle: {
 
   confirmBtn: {
     marginTop: 15,
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',

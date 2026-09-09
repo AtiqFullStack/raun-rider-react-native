@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
   },
   primaryBtn: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
   },
   cancelBtn: {
     backgroundColor: Colors.quoteBg,

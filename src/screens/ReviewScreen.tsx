@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    backgroundColor: '#232C74',
+    backgroundColor: Colors.primary,
     height: verticalScale(160),
     borderBottomLeftRadius: scale(24),
     borderBottomRightRadius: scale(24),
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: fontScale(20),
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.red,
     marginBottom: verticalScale(6),
   },
 

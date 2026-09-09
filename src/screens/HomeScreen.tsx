@@ -358,21 +358,21 @@ const [syncLoading, setSyncLoading] = useState(false);
 
   const statCards = [
     {
-      label: "Today's Earnings",
+      label: "Earned Today",
       value: `$${Number(dashboardData?.todayEarnings || 0).toFixed(2)}`,
       icon: <DollarSvg width={scale(22)} height={scale(22)} />,
       iconBg: '#22C55E22',
       iconColor: '#22C55E',
-      accent: '#22C55E',
+      // accent: '#22C55E',
       goto: 'Transactions',
     },
     {
-      label: 'Completed Trips',
+      label: 'Trips Completed',
       value: `${dashboardData?.totalTrips ?? 0}`,
       icon: <TruckSvg width={scale(22)} height={scale(22)} />,
       iconBg: '#3B82F622',
       iconColor: '#3B82F6',
-      accent: '#3B82F6',
+      // accent: '#3B82F6',
       goto: null,
     },
   ];
@@ -508,8 +508,8 @@ const [syncLoading, setSyncLoading] = useState(false);
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[Colors.red]} // Android
-            tintColor={Colors.red} // iOS
+            colors={[Colors.secondaryDark]} // Android
+            tintColor={Colors.secondaryDark} // iOS
           />
         }
       >
@@ -562,7 +562,7 @@ const [syncLoading, setSyncLoading] = useState(false);
                 style={styles.replenishBtn}
                 onPress={() => setIsReplenishModalVisible(true)}
               >
-                <Text style={styles.replenishText}>Top Up</Text>
+                <Text style={styles.replenishText}>REPLENISH</Text>
               </TouchableOpacity>
 
 
@@ -641,7 +641,7 @@ const [syncLoading, setSyncLoading] = useState(false);
                     color: Colors.black,
                   }}
                 >
-                  Active Request
+                  New Request
                 </Text>
               </View>
 
@@ -969,7 +969,7 @@ const [syncLoading, setSyncLoading] = useState(false);
                 {
                   backgroundColor: paymentResult?.success
                     ? '#22C55E'
-                    : Colors.red,
+                    : Colors.secondaryDark,
                 },
               ]}
               onPress={() => {
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderStyle: 'dashed',
     borderWidth: fontScale(1),
-    borderColor: Colors.red,
+    borderColor: Colors.secondaryDark,
     marginVertical: 6,
     padding: scale(12),
     borderRadius: 10,
@@ -1035,7 +1035,7 @@ const styles = StyleSheet.create({
     marginRight: scale(6),
   },
   replenishBtn: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     borderRadius: scale(6),
     paddingHorizontal: scale(10),
     height: scale(32),
@@ -1207,7 +1207,7 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     borderRadius: scale(10),
     paddingVertical: scale(12),
     alignItems: 'center',

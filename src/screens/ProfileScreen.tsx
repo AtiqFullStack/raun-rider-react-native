@@ -202,8 +202,8 @@ const ProfileScreen = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[Colors.red]} // Android
-            tintColor={Colors.red} // iOS
+            colors={[Colors.secondaryDark]} // Android
+            tintColor={Colors.secondaryDark} // iOS
           />
         }
       >
@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
   licenseNumber: {
     fontSize: fontScale(13),
     fontFamily: 'Rubik-Medium',
-    color: Colors.red,
+    color: Colors.secondaryDark,
     backgroundColor: Colors.lightRed,
     marginTop: 4,
     paddingHorizontal: 12,
@@ -783,12 +783,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#FFF0EE',
     borderWidth: 1,
-    borderColor: Colors.red,
+    borderColor: Colors.secondaryDark,
   },
   logoutText: {
     fontSize: fontScale(15),
     fontFamily: 'Rubik-Medium',
-    color: Colors.red,
+    color: Colors.secondaryDark,
     marginLeft: 8,
   },
   deleteText: {

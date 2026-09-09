@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     color: Colors.black,
   },
   btn: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     width: '100%',
     paddingVertical: scale(14),
     borderRadius: scale(12),

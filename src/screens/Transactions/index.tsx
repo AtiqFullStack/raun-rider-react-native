@@ -123,7 +123,7 @@ function TransactionCard({
         <Text
           style={[
             styles.amountText,
-            { color: isCredit ? '#1DB05A' : Colors.red },
+            { color: isCredit ? '#1DB05A' : Colors.secondaryDark },
           ]}
         >
           {isCredit ? '+' : '-'}${formatAmount(item.amount)}
@@ -618,8 +618,8 @@ export default function Transactions() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[Colors.red]}
-            tintColor={Colors.red}
+            colors={[Colors.secondaryDark]}
+            tintColor={Colors.secondaryDark}
           />
         }
         ListEmptyComponent={
@@ -696,7 +696,7 @@ export default function Transactions() {
                     color:
                       selected.transactionType === 'CREDIT'
                         ? '#1DB05A'
-                        : Colors.red,
+                        : Colors.secondaryDark,
                   },
                 ]}
               >
@@ -746,7 +746,7 @@ export default function Transactions() {
                     <DetailRow
                       label="Penalty Charged"
                       value={`$${formatAmount(selected.amount)}`}
-                      valueColor={Colors.red}
+                      valueColor={Colors.secondaryDark}
                     />
                   </View>
                   <View style={styles.totalRow}>
@@ -781,7 +781,7 @@ export default function Transactions() {
                         value={`$${formatAmount(
                           selected.breakdown?.customerCommission,
                         )}`}
-                        valueColor={Colors.red}
+                        valueColor={Colors.secondaryDark}
                       />
 
                       <View style={styles.divider} />
@@ -791,7 +791,7 @@ export default function Transactions() {
                         value={`$${formatAmount(
                           selected.breakdown?.driverCommission,
                         )}`}
-                        valueColor={Colors.red}
+                        valueColor={Colors.secondaryDark}
                       />
 
                       <View style={styles.divider} />
@@ -811,7 +811,7 @@ export default function Transactions() {
                         value={`$${formatAmount(
                           selected.breakdown?.adminCommission,
                         )}`}
-                        valueColor={Colors.red}
+                        valueColor={Colors.secondaryDark}
                       />
                     </View>
                   </>
@@ -960,7 +960,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(20),
     backgroundColor: Colors.lightRed,
     borderWidth: 1,
-    borderColor: Colors.red,
+    borderColor: Colors.secondaryDark,
     marginRight: scale(8),
     marginBottom: scale(8),
     justifyContent: 'center',
@@ -968,7 +968,7 @@ const styles = StyleSheet.create({
   clearBtnText: {
     fontFamily: 'Rubik-Medium',
     fontSize: fontScale(12),
-    color: Colors.red,
+    color: Colors.secondaryDark,
   },
 
   // Empty State
@@ -1272,7 +1272,7 @@ const styles = StyleSheet.create({
   },
 
   closeBtn: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     borderRadius: scale(14),
     paddingVertical: scale(14),
     alignItems: 'center',

@@ -88,7 +88,7 @@ uploadButton: {
     width: 34,
     height: 34,
     borderRadius: 50,
-    backgroundColor: colors.primary,
+    backgroundColor: Colors.red,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,

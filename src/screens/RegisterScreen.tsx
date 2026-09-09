@@ -689,7 +689,7 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(20),
   },
   headerTopRow: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { fontSize: fontScale(22), fontFamily: 'Rubik-Bold',   marginStart: 11, color: Colors.textLight },
+  headerTitle: { fontSize: fontScale(22), fontFamily: 'Rubik-Bold',   marginStart: 11, color: Colors.red },
   headerSubtitle: {
     marginTop: verticalScale(6),
     fontSize: fontScale(14),
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     marginHorizontal: verticalScale(15),
   },
   progressBar: { flex: 1, height: 4, backgroundColor: '#E5E7EB', borderRadius: 4, marginHorizontal: 4 },
-  active: { backgroundColor: Colors.primary },
+  active: { backgroundColor: Colors.red },
   buttonContainer: {
     marginTop: verticalScale(20),
     width: '100%',

@@ -289,7 +289,7 @@ export default function AllOrders() {
     if (loading) {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.red} />
+          <ActivityIndicator size="large" color={Colors.secondaryDark} />
           <Text style={styles.loadingText}>Loading {activeTab.toLowerCase()} trips...</Text>
         </View>
       );
@@ -335,8 +335,8 @@ export default function AllOrders() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[Colors.red]}
-            tintColor={Colors.red}
+            colors={[Colors.secondaryDark]}
+            tintColor={Colors.secondaryDark}
           />
         }
         renderItem={({ item }) => {
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
     color: Colors.black1,
   },
   activeTabText: {
-    color: Colors.red,
+    color: Colors.secondaryDark,
   },
   emptyContainer: {
     flex: 1,

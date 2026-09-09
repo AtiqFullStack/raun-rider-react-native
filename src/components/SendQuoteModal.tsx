@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
     color: Colors.black,
   },
   submitButton: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
   },
   disabledButton: {
     opacity: 0.5,

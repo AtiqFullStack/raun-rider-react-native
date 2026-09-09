@@ -347,7 +347,7 @@ export default function  AllOrders() {
     if (loading) {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.red} />
+          <ActivityIndicator size="large" color={Colors.secondaryDark} />
           <Text style={styles.loadingText}>Loading orders...</Text>
         </View>
       );
@@ -418,7 +418,7 @@ export default function  AllOrders() {
       </View>
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.red} />
+          <ActivityIndicator size="large" color={Colors.secondaryDark} />
         </View>
       ) : error ? (
         <View style={styles.errorContainer}>
@@ -442,8 +442,8 @@ export default function  AllOrders() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[Colors.red]} // Android
-              tintColor={Colors.red} // iOS
+              colors={[Colors.secondaryDark]} // Android
+              tintColor={Colors.secondaryDark} // iOS
             />
           }
           ListEmptyComponent={renderEmptyList}
@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: fontScale(16),
     fontFamily: 'Rubik-Regular',
-    color: Colors.red,
+    color: Colors.secondaryDark,
     textAlign: 'center',
     marginBottom: scale(20),
   },
@@ -755,7 +755,7 @@ const styles = StyleSheet.create({
     marginBottom: scale(20),
   },
   retryButton: {
-    backgroundColor: Colors.red,
+    backgroundColor: Colors.secondaryDark,
     paddingHorizontal: scale(30),
     paddingVertical: scale(12),
     borderRadius: scale(8),

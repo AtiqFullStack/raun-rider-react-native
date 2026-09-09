@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   forgotText: {
     fontSize: fontScale(12),
     fontFamily: 'Rubik-Regular',
-    color: Colors.primary,
+    color: Colors.red,
   },
 
   registerContainer: {
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
   registerLink: {
     fontSize: fontScale(14),
     fontFamily: 'Rubik-Regular',
-    color: colors.primary,
+    color: Colors.red,
   },
 
   errorText: {

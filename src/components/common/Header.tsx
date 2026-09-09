@@ -27,7 +27,7 @@ import ForegroundService, { registerLocationModalHandler } from '../../services/
 import usePermissions from '../../hooks/usePermissions';
 import BellSvgCode from '../../assets/svg/BellCodeSvg';
 
-const NAVY = '#011E4A';
+const NAVY = '#014D4D';
 const GOLD = '#D0A645';
 
 export default function Header(props: any) {
@@ -100,7 +100,7 @@ export default function Header(props: any) {
 
   return (
     <LinearGradient
-      colors={[NAVY, '#01285E', '#02306B', NAVY]}
+      colors={[NAVY, '#014D4D', '#014D4D', NAVY]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[
@@ -126,7 +126,7 @@ export default function Header(props: any) {
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               style={styles.backBtn}
             >
-              <BackIcon color={Colors.white} />
+              <BackIcon color={Colors.white}  />
             </TouchableOpacity>
           )}
           <Text style={styles.simpleTitle}>{simpleHeaderTitle}</Text>
@@ -147,7 +147,7 @@ export default function Header(props: any) {
           <View style={[styles.driverInfo, hideDriverInfo && styles.tripHeaderTitleWrap]}>
             {!hideDriverInfo && (
               <>
-                <Text style={styles.greeting}>Welcome back 👋</Text>
+                {/* <Text style={styles.greeting}>Welcome back 👋</Text> */}
                 <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
                   {fullNameConverter(user?.firstName, user?.surName)}
                 </Text>
@@ -180,26 +180,25 @@ export default function Header(props: any) {
               activeOpacity={0.9}
               style={styles.toggleWrapper}
             >
-              <View
-                style={[
-                  styles.switchTrack,
-                  {
-                    backgroundColor: isOnline
-                      ? 'rgba(20,120,58,0.25)'
-                      : 'rgba(180,35,35,0.22)',
-                  },
-                ]}
-              >
+              <View style={styles.switchTrack}>
+                <Text
+                  style={[
+                    styles.toggleLabel,
+                    { marginLeft: isOnline ? 0 : 30, marginRight: isOnline ? 30 : 0 },
+                  ]}
+                >
+                  {isOnline ? 'Online' : 'Offline'}
+                </Text>
                 <Animated.View
                   style={[
                     styles.switchThumb,
                     {
-                      backgroundColor: isOnline ?Colors.green : '#E53935'   ,
+                      backgroundColor: isOnline ? '#28C64E' : '#E53935',
                       transform: [
                         {
                           translateX: thumbAnim.interpolate({
                             inputRange: [0, 1],
-                            outputRange: [2, 30],
+                            outputRange: [2, 76],
                           }),
                         },
                       ],
@@ -209,17 +208,6 @@ export default function Header(props: any) {
                   <Image source={switchIcon} style={styles.thumbIcon} />
                 </Animated.View>
               </View>
-
-              <Text
-                style={[
-                  styles.toggleLabel,
-                  {
-                    color: isOnline ? '#6EEB83' : '#6EEB83',
-                  },
-                ]}
-              >
-                 {isOnline ? 'Online' : 'Go Online'}
-              </Text>
             </TouchableOpacity>
           ) }
           {showNotification && (
@@ -231,7 +219,7 @@ export default function Header(props: any) {
       )}
 
       {/* Gold bottom accent */}
-      <View style={styles.goldBar} />
+      {/* <View style={styles.goldBar} /> */}
     </LinearGradient>
   );
 }
@@ -272,9 +260,6 @@ const styles = StyleSheet.create({
   backBtn: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(208,166,69,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(208,166,69,0.35)',
     marginRight: 10,
   },
   simpleTitle: {
@@ -284,7 +269,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   avatarRing: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: GOLD,
     borderRadius: 50,
     padding: 2,
@@ -315,8 +300,7 @@ const styles = StyleSheet.create({
   },
   toggleWrapper: {
     alignItems: 'center',
-    gap: 2,
-    marginRight:14
+    marginRight: 14
   },
   track: {
     width: 80,
@@ -356,9 +340,7 @@ const styles = StyleSheet.create({
   bellBtn: {
     padding: 8,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1.5,
-    borderColor: GOLD,
+    backgroundColor: Colors.white,
   },
   goldBar: {
     height: 3,
@@ -369,44 +351,41 @@ const styles = StyleSheet.create({
 
 
   switchTrack: {
-    width: 52,
-    height: 28,
+    width: 108,
+    height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: '#F1F5F7',
     justifyContent: 'center',
     position: 'relative',
   },
 
   switchThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     position: 'absolute',
     left: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.white,
-    elevation: 6,
+    elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.28,
-    shadowRadius: 3,
+    shadowOpacity: 0.18,
+    shadowRadius: 2,
   },
 
   thumbIcon: {
-    width: 12,
-    height: 12,
+    width: 16,
+    height: 16,
     tintColor: Colors.white,
   },
 
   toggleLabel: {
-    marginTop: 5,
-    fontSize: fontScale(10),
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontSize: fontScale(14),
+    fontWeight: '700',
+    color: '#465166',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 
 });

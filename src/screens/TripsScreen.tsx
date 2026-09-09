@@ -41,7 +41,7 @@ const TripsScreen = () => {
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color={Colors.red} />
+        <ActivityIndicator size="large" color={Colors.secondaryDark} />
       </View>
     );
   }
@@ -161,6 +161,6 @@ tabText: {
 },
 
 activeTabText: {
-  color: Colors.red,
+  color: Colors.secondaryDark,
 },
 });
