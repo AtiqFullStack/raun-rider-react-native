@@ -210,6 +210,8 @@ const [syncLoading, setSyncLoading] = useState(false);
     };
   }, [paynowPollUrl, paymentStatus]);
 
+  console.log('Ordersdata', orders);
+
 
   const syncPendingPayments = async () => {
 
@@ -422,13 +424,20 @@ const [syncLoading, setSyncLoading] = useState(false);
     try {
       const location = await getCurrentLocation();
       console.log(location)
-
+console.log({
+        method: 'GET',
+        url: '/driver/food-orders',
+        params: {
+          latitude: location.lat,
+          longitude: location.long,
+          type,
+        }})
       const res = await fetchData({
-        method: 'POST',
-        url: '/user/order/driver-orders',
-        data: {
-          lat: location.lat,
-          lng: location.long,
+        method: 'GET',
+        url: '/driver/food-orders',
+        params: {
+          latitude: location.lat,
+          longitude: location.long,
           type,
         },
         headers: {
@@ -437,20 +446,61 @@ const [syncLoading, setSyncLoading] = useState(false);
       });
  
 
-      const formatted =
-        res.data?.map((i: any) => {
-          const tripDistanceKm = calculateDistanceKm(
-            i.pickup.lat,
-            i.pickup.lng,
-            i.drop.lat,
-            i.drop.lng,
-          );
+      const formatOrders = (data: any): OrderUI[] => {
+        const items = Array.isArray(data) ? data : data?.orders || [];
+
+        return items.map((i: any) => {
+          const restaurantLocation =
+            i.restaurantId?.location || i.restaurantSnapshot?.location;
+          const address = i.deliveryAddress;
+          const pickup = i.pickup || {
+            lat: restaurantLocation?.coordinates?.latitude,
+            lng: restaurantLocation?.coordinates?.longitude,
+            address: restaurantLocation?.address || '',
+          };
+          const drop = i.drop || {
+            lat: address?.latitude,
+            lng: address?.longitude,
+            address: address?.formattedAddress || address?.street || '',
+          };
+          const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
+            .every(value => typeof value === 'number' && Number.isFinite(value));
+          const tripDistanceKm = i.distanceKm ?? (hasCoordinates
+            ? calculateDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng)
+            : undefined);
 
           return {
             ...i,
-            distance: `${tripDistanceKm} KM`,
+            // Keep the Mongo ID for actions; show the readable order number.
+            _id: i._id,
+            orderId: i.orderNumber || i.orderId || i._id,
+            status: i.orderStatus || i.status,
+            customerId: i.customerId || {
+              _id: i.userAuthId?._id || i.userAuthId || '',
+              fullName: address?.contactName || i.userAuthId?.fullName || '',
+              portraitPhoto: i.userAuthId?.portraitPhoto || '',
+            },
+            pickup,
+            drop,
+            package: i.package || {
+              itemName: (i.items || [])
+                .map((item: any) => `${item.name} × ${item.quantity}`)
+                .join(', '),
+              weight: 0,
+              weightUnit: '',
+              description: i.notes || '',
+              photos: [],
+              payer: 'SENDER',
+              paymentMode: i.paymentMethod || '',
+            },
+            distance: typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
+              ? `${Number(tripDistanceKm.toFixed(2))} KM`
+              : '',
           };
-        }) || [];
+        });
+      };
+
+      const formatted = formatOrders(res.data);
 
       setOrders(formatted);
     } catch (error: any) {
@@ -649,7 +699,7 @@ const [syncLoading, setSyncLoading] = useState(false);
             </View>
             {orders && (
               <FlatList
-                data={visibleOrders}
+                data={orders}
                 keyExtractor={item => item._id}
                 renderItem={({ item }) => (
                   <TouchableOpacity
@@ -661,6 +711,7 @@ const [syncLoading, setSyncLoading] = useState(false);
                   >
                     <RequestCard
                       orderId={item._id}
+                      orderIdNormal={item.orderId}
                       status={
                         item.isAccepted
                           ? 'ACCEPTED'

@@ -1,13 +1,32 @@
 {
   "project_info": {
-    "project_number": "95581454650",
-    "project_id": "bankay-7ebff",
-    "storage_bucket": "bankay-7ebff.firebasestorage.app"
+    "project_number": "725100796629",
+    "project_id": "rauntest-e53ef",
+    "storage_bucket": "rauntest-e53ef.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:95581454650:android:efb5a4abb62cd012b21003",
+        "mobilesdk_app_id": "1:725100796629:android:bc1b194d97f3c5e8d3205c",
+        "android_client_info": {
+          "package_name": "com.raun"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBm8m1t0z-URSkWb4LPTCRJX4LvHOXXTsQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:725100796629:android:c2065150d12d578bd3205c",
         "android_client_info": {
           "package_name": "com.raun.driver"
         }
@@ -15,7 +34,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBsnDO2sIHomzULX5H4VtDWgXyi1hdeKDU"
+          "current_key": "AIzaSyBm8m1t0z-URSkWb4LPTCRJX4LvHOXXTsQ"
         }
       ],
       "services": {

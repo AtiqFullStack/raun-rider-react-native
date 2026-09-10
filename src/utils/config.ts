@@ -1,11 +1,9 @@
-export const BASE_URL = 'https://raunbn.com/backend/api/';
+export const BASE_URL = 'https://v28lskqk-1111.inc1.devtunnels.ms/api';
 // export const BASE_URL = 'https://v28lskqk-7001.inc1.devtunnels.ms/api/v1';  
 
 
 export const SOCKET_URL='https://backend.bankaypos.wise-hustlers.com'
 // export const SOCKET_URL='https://v28lskqk-7001.inc1.devtunnels.ms'
-
-export const IMAGE_URL = "https://raunbn.com/backend"
 // export const IMAGE_URL = "https://v1h96scp-6001.inc1.devtunnels.ms"
 
 export const switchIcon = require('../assets/images/Vector.png')

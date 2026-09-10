@@ -163,28 +163,67 @@ export default function  AllOrders() {
       console.log(location)
       const query = searchQuery.trim();
 
-      const formatOrders = (items: any[] = []) =>
-        items.map((i: any) => {
-          const tripDistanceKm = calculateDistanceKm(
-            i.pickup.lat,
-            i.pickup.lng,
-            i.drop.lat,
-            i.drop.lng,
-          );
+      const formatOrders = (data: any): OrderUI[] => {
+        const items = Array.isArray(data) ? data : data?.orders || [];
+
+        return items.map((i: any) => {
+          const restaurantLocation =
+            i.restaurantId?.location || i.restaurantSnapshot?.location;
+          const address = i.deliveryAddress;
+          const pickup = i.pickup || {
+            lat: restaurantLocation?.coordinates?.latitude,
+            lng: restaurantLocation?.coordinates?.longitude,
+            address: restaurantLocation?.address || '',
+          };
+          const drop = i.drop || {
+            lat: address?.latitude,
+            lng: address?.longitude,
+            address: address?.formattedAddress || address?.street || '',
+          };
+          const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
+            .every(value => typeof value === 'number' && Number.isFinite(value));
+          const tripDistanceKm = i.distanceKm ?? (hasCoordinates
+            ? calculateDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng)
+            : undefined);
 
           return {
             ...i,
-            distance: `${tripDistanceKm} KM`,
+            // Keep the Mongo ID for actions; show the readable order number.
+            _id: i._id,
+            orderId: i.orderNumber || i.orderId || i._id,
+            status: i.orderStatus || i.status,
+            customerId: i.customerId || {
+              _id: i.userAuthId?._id || i.userAuthId || '',
+              fullName: address?.contactName || i.userAuthId?.fullName || '',
+              portraitPhoto: i.userAuthId?.portraitPhoto || '',
+            },
+            pickup,
+            drop,
+            package: i.package || {
+              itemName: (i.items || [])
+                .map((item: any) => `${item.name} × ${item.quantity}`)
+                .join(', '),
+              weight: 0,
+              weightUnit: '',
+              description: i.notes || '',
+              photos: [],
+              payer: 'SENDER',
+              paymentMode: i.paymentMethod || '',
+            },
+            distance: typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
+              ? `${Number(tripDistanceKm.toFixed(2))} KM`
+              : '',
           };
         });
+      };
 
       const fetchOrdersByType = (type: 'ALL' | 'ACTIVE') =>
         fetchData({
-          method: 'POST',
-          url: '/user/order/driver-orders',
-          data: {
-            lat: location.lat,
-            lng: location.long,
+          method: 'GET',
+          url: '/driver/food-orders',
+          params: {
+            latitude: location.lat,
+            longitude: location.long,
             type,
             search: query,
           },

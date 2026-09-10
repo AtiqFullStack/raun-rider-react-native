@@ -147,8 +147,8 @@ export default function AllOrders() {
       const location = await getCurrentLocation();
 
       const res = await fetchData({
-        method: 'POST',
-        url: '/user/order/driver-orders',
+        method: 'GET',
+        url: '/driver/food-orders',
         data: {
           lat: location.lat,
           lng: location.long,
