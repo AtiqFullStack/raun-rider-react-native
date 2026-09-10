@@ -317,6 +317,16 @@ export default function  AllOrders() {
     return () => subscription.remove();
   }, [fetchDriverOrders]);
 
+  // When a new food order notification arrives, snap to PENDING tab and refresh
+  useEffect(() => {
+    const subscription = AppEvents.addListener(EVENTS.NEW_FOOD_ORDER, () => {
+      setActiveTab('PENDING');
+      fetchDriverOrders(searchRef.current);
+    });
+
+    return () => subscription.remove();
+  }, [fetchDriverOrders]);
+
   const normalizeStatus = (status?: string) =>
     (status || '').replace(/[\s-]/g, '_').toUpperCase();
 
@@ -503,6 +513,7 @@ export default function  AllOrders() {
               orderIdNormal: item.orderId,
               isCab,
               passengerName: item.passenger?.name,
+              service: item?.serviceId?.name,
             };
 
             // 🔵 ACCEPTED

@@ -26,6 +26,7 @@ interface RequestCardProps {
   disableActions?: boolean;
   price?: number;
   estimatedTime?: string;
+  service?: string;
   orderId?: string;
   orderIdNormal?: string;
   isCab?: boolean;
@@ -55,6 +56,7 @@ export default function RequestCard({
   price, estimatedTime, orderId, orderIdNormal,
   disableActions = false, isCab = false, passengerName,
   onCancel, onSendQuote, onRemove, onAcceptDelivery,
+  service
 }: RequestCardProps) {
 
   const { socket, isSocketConnected } = useSocket();
@@ -148,7 +150,7 @@ export default function RequestCard({
       <View style={styles.topBar}>
         <View style={[styles.serviceBadge, { backgroundColor: svc.bg }]}>
           <View style={[styles.serviceDot, { backgroundColor: svc.dot }]} />
-          <Text style={[styles.serviceLabel, { color: svc.color }]}>{svc.label}</Text>
+          <Text style={[styles.serviceLabel, { color: svc.color }]}>{service}</Text>
         </View>
         <Text style={styles.orderId}>{orderIdNormal}</Text>
       </View>

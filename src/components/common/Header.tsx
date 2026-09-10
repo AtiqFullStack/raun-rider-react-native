@@ -26,6 +26,7 @@ import Toast from 'react-native-toast-message';
 import ForegroundService, { registerLocationModalHandler } from '../../services/BankgroundSync';
 import usePermissions from '../../hooks/usePermissions';
 import BellSvgCode from '../../assets/svg/BellCodeSvg';
+import { getCurrentLocation } from '../../services/driverLocationTracker';
 
 const NAVY = '#014D4D';
 const GOLD = '#D0A645';
@@ -78,7 +79,9 @@ export default function Header(props: any) {
     const perm = await requestLocationPermissionsBg();
     if (!perm) return;
     try {
-      const res = await api.post('/user/auth/isOnline', { status: !isOnline });
+      const location = await getCurrentLocation();
+      console.log(location)
+      const res = await api.post('/user/auth/isOnline', { status: !isOnline , latitude:location.lat , longitude:location.long });
       if (res.data.success) {
         setIsOnline(!isOnline);
         setUser((pre: any) => ({ ...pre, isOnline: !isOnline }));

@@ -1,5 +1,4 @@
 import {
-  FlatList,
   Modal,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,8 @@ import { MY_STYLES } from '../constants/myStyles';
 import { DollarSvg, GrowSvg, TruckSvg, WalletIcon } from '../utils/config';
 import { fontScale, scale } from '../utils/scaling';
 import RequestCard from '../components/RequestCard';
+import NewOrderCard from '../components/NewOrderCard';
+import ActiveOrderCard from '../components/ActiveOrderCard';
 
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
@@ -645,149 +646,134 @@ console.log({
             ))}
           </View>
 
-          {/* ---------------------------- New Request--------------------------- */}
-          <View style={{ marginTop: scale(20) }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: scale(15),
-              }}
-            >
-              {/* LEFT: Title */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: scale(10),
-                  alignItems: 'center',
-                }}
-              >
-                <View
-                  style={{
-                    borderColor: '#22C55E',
-                    borderWidth: 1,
-                    height: scale(22),
-                    width: scale(22),
-                    borderRadius: 50,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: scale(14),
-                      height: scale(14),
-                      backgroundColor: '#22C55E',
-                      borderRadius: 50,
-                      alignSelf: 'center',
-                      marginTop: scale(4),
-                    }}
-                  />
+          {/* ── Active Orders ── */}
+          {(() => {
+            const activeOrders = orders.filter(
+              o =>
+                o.orderStatus === 'out_for_delivery' ||
+                o.status === 'IN_PROGRESS' ||
+                o.isAccepted ||
+                o.driverRequestStatus === 'ACCEPTED',
+            );
+            if (activeOrders.length === 0) return null;
+            return (
+              <View style={{ marginTop: scale(20) }}>
+                {/* section header */}
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionDotWrap}>
+                    <View style={[styles.sectionDotOuter, { borderColor: '#22C55E' }]}>
+                      <View style={[styles.sectionDotInner, { backgroundColor: '#22C55E' }]} />
+                    </View>
+                  </View>
+                  <Text style={styles.sectionTitle}>Active Orders</Text>
+                  <View style={styles.sectionBadge}>
+                    <Text style={styles.sectionBadgeText}>{activeOrders.length}</Text>
+                  </View>
                 </View>
 
-                <Text
-                  style={{
-                    fontFamily: 'Baloo2-ExtraBold',
-                    fontSize: scale(16),
-                    color: Colors.black,
-                  }}
-                >
-                  New Request
-                </Text>
-              </View>
-
-        
-            </View>
-            {orders && (
-              <FlatList
-                data={orders}
-                keyExtractor={item => item._id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
+                {activeOrders.map(item => (
+                  <ActiveOrderCard
+                    key={item._id}
+                    orderId={item.orderId || item._id}
+                    serviceType={item.serviceId?.serviceType || item?.serviceId?.name}
+                    customerName={item.customerId?.fullName || '—'}
+                    pickupAddress={item.pickup?.address || '—'}
+                    dropAddress={item.drop?.address || '—'}
+                    distance={item.distance}
+                    totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.finalPrice}
+                    currency={item.currency}
+                    orderStatus={item.orderStatus || item.status || 'confirmed'}
+                    paymentStatus={item.paymentStatus}
+                    createdAt={item.createdAt}
                     onPress={() => {
                       setSelectedOrderForDetail(item);
                       setIsDetailModalVisible(true);
                     }}
-                  >
-                    <RequestCard
-                      orderId={item._id}
-                      orderIdNormal={item.orderId}
-                      status={
-                        item.isAccepted
-                          ? 'ACCEPTED'
-                          : item.isRequested
-                            ? 'BOOKING_REQUESTED'
-                            : sentQuotes.includes(item._id)
-                              ? 'QUOTE_SENT'
-                              : 'PENDING'
-                      }
-                      name={item.customerId.fullName}
-                      photo={item.customerId.portraitPhoto}
-                      pickup={item.pickup}
-                      drop={item.drop}
-                      distance={item.distance}
-                      weight={item.package.weight}
-                      weightUnit={item.package.weightUnit}
-                      itemName={item.package.itemName}
-                      price={item.finalPrice}
-                      createdAt={item.createdAt}
-                      onCancel={() => console.log('Cancel', item._id)}
-                      onSendQuote={() => {
-                        console.log('Selected order ID:', item._id);
-                        setSelectedOrderForQuote(item);
-                      }}
-                    />
-                  </TouchableOpacity>
-                )}
-                scrollEnabled={false}
-                ListEmptyComponent={
-                  <View
-                    style={{ alignItems: 'center', paddingVertical: scale(20) }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: 'Rubik-Regular',
-                        fontSize: fontScale(14),
-                        color: Colors.Textgray,
-                      }}
-                    >
-                      No active request available
-                    </Text>
-                  </View>
-                }
-              />
-            )}
-            {/* Quick Action — temporarily disabled
-            <View style={{ marginTop: scale(30), marginBottom: scale(20) }}>
-              <Text
-                style={{
-                  fontFamily: 'Baloo2-ExtraBold',
-                  fontSize: scale(16),
-                  color: Colors.black,
-                  marginBottom: scale(15),
-                }}
-              >
-                Quick Action
-              </Text>
-
-              <View style={styles.quickActionsContainer}>
-                {quickActions.map((action, index) => (
-                  <View key={index} style={styles.quickActionItem}>
-                    <TouchableOpacity
-                      style={styles.quickActionCard}
-                      onPress={() => console.log(`${action.title} pressed`)}
-                      activeOpacity={0.85}
-                    >
-                      <View style={[styles.quickActionIcon]}>
-                        {action.icon}
-                      </View>
-                    </TouchableOpacity>
-                    <Text style={styles.quickActionText}>{action.title}</Text>
-                  </View>
+                    onGoToTrip={() => {
+                      navigation.navigate('RideDetails' as never, {
+                        order: {
+                          ...item,
+                          tripId: item.tripId,
+                          tripStatus: item.tripStatus || 'CREATED',
+                        },
+                      } as never);
+                    }}
+                  />
                 ))}
               </View>
-            </View>
-            */}
+            );
+          })()}
+
+          {/* ── New Requests ── */}
+          {(() => {
+            // "ready" = food is prepared, no driver assigned yet → show as new request
+            const newOrders = orders.filter(
+              o =>
+                o.orderStatus === 'ready' ||
+                (
+                  !o.isAccepted &&
+                  o.driverRequestStatus !== 'ACCEPTED' &&
+                  o.status !== 'IN_PROGRESS' &&
+                  o.status !== 'ACCEPTED' &&
+                  o.orderStatus !== 'out_for_delivery'
+                ),
+            );
+            return (
+              <View style={{ marginTop: scale(20) }}>
+                {/* section header */}
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionDotWrap}>
+                    <View style={[styles.sectionDotOuter, { borderColor: '#E85D04' }]}>
+                      <View style={[styles.sectionDotInner, { backgroundColor: '#E85D04' }]} />
+                    </View>
+                  </View>
+                  <Text style={styles.sectionTitle}>New Requests</Text>
+                  {newOrders.length > 0 && (
+                    <View style={[styles.sectionBadge, { backgroundColor: '#FFF0EB' }]}>
+                      <Text style={[styles.sectionBadgeText, { color: '#E85D04' }]}>{newOrders.length}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {newOrders.length === 0 ? (
+                  <View style={styles.emptyBox}>
+                    <Text style={styles.emptyText}>No new requests right now</Text>
+                  </View>
+                ) : (
+                  newOrders.map(item => (
+                    <NewOrderCard
+                      key={item._id}
+                      orderId={item.orderId || item._id}
+                      orderMongoId={item._id}
+                      serviceType={item.serviceId?.serviceType || item?.serviceId?.name || (item.orderStatus ? 'food' : undefined)}
+                      customerName={item.customerId?.fullName || '—'}
+                      pickupAddress={item.pickup?.address || '—'}
+                      dropAddress={item.drop?.address || '—'}
+                      distance={item.distance}
+                      itemSummary={item.package?.itemName || undefined}
+                      totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.estimatedPrice}
+                      currency={item.currency}
+                      createdAt={item.createdAt}
+                      status={
+                        item.isRequested
+                          ? 'BOOKING_REQUESTED'
+                          : sentQuotes.includes(item._id)
+                          ? 'QUOTE_SENT'
+                          : 'PENDING'
+                      }
+                      onPress={() => {
+                        setSelectedOrderForDetail(item);
+                        setIsDetailModalVisible(true);
+                      }}
+                      onAccept={() => fetchDriverOrders('ACTIVE')}
+                      onIgnore={() => setOrders(prev => prev.filter(o => o._id !== item._id))}
+                    />
+                  ))
+                )}
+              </View>
+            );
+          })()}
+
             {selectedOrderForQuote && (
               <SendQuoteModal
                 visible={true}
@@ -819,7 +805,6 @@ console.log({
                 }}
               />
             )}
-          </View>
         </View>
         
       </ScrollView>
@@ -1356,5 +1341,57 @@ const styles = StyleSheet.create({
     borderRadius: scale(8),
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  // ── section headers ──────────────────────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    marginBottom: scale(14),
+  },
+  sectionDotWrap: { justifyContent: 'center', alignItems: 'center' },
+  sectionDotOuter: {
+    borderWidth: 1.5,
+    height: scale(20),
+    width: scale(20),
+    borderRadius: scale(10),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionDotInner: {
+    width: scale(11),
+    height: scale(11),
+    borderRadius: scale(6),
+  },
+  sectionTitle: {
+    fontFamily: 'Baloo2-ExtraBold',
+    fontSize: scale(16),
+    color: Colors.black,
+    flex: 1,
+  },
+  sectionBadge: {
+    backgroundColor: '#E7F7F0',
+    borderRadius: scale(20),
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(3),
+  },
+  sectionBadgeText: {
+    fontFamily: 'Rubik-SemiBold',
+    fontSize: fontScale(12),
+    color: Colors.green,
+  },
+
+  // ── empty state ───────────────────────────────────────────────────────────
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: scale(24),
+    backgroundColor: Colors.bg,
+    borderRadius: scale(12),
+  },
+  emptyText: {
+    fontFamily: 'Rubik-Regular',
+    fontSize: fontScale(14),
+    color: Colors.Textgray,
   },
 });

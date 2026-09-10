@@ -106,6 +106,10 @@ function AppComp() {
       const initialNotification = await notifee.getInitialNotification();
       if (initialNotification) {
         AppEvents.emit(EVENTS.REFRESH_ORDERS);
+        // If it was a food order notification, go straight to Trips tab
+        if (initialNotification.notification?.data?.type === 'FOOD_ORDER_READY') {
+          AppEvents.emit(EVENTS.NEW_FOOD_ORDER);
+        }
       }
     })();
   }, []);
@@ -121,6 +125,7 @@ function AppComp() {
 
   useEffect(() => {
     const unsubscribe = messaging().onMessage(async remoteMessage => {
+      console.log(remoteMessage)
       const { title, body } = getNotificationContent(remoteMessage?.data);
       await notifee.displayNotification({
         title,
@@ -145,6 +150,20 @@ function AppComp() {
             index: 0,
             routes: [{ name: 'Tabs', params: { screen: 'Home' } }],
           });
+        }
+      }
+
+      // New food order ready → jump to Trips tab (PENDING)
+      if (remoteMessage?.data?.type === 'FOOD_ORDER_READY') {
+        AppEvents.emit(EVENTS.NEW_FOOD_ORDER);
+        const nav = navigationRef.current;
+        if (nav) {
+          nav.dispatch(
+            CommonActions.navigate({
+              name: 'Tabs',
+              params: { screen: 'Trips' },
+            }),
+          );
         }
       }
     });

@@ -22,6 +22,7 @@ if (Platform.OS === 'android') {
 
 /* ------------------ Firebase Background Handler ------------------ */
 messaging().setBackgroundMessageHandler(async remoteMessage => {
+  console.log(remoteMessage)
   await notifee.displayNotification({
     title: remoteMessage?.data?.title ?? 'TRUCKn Bike 🚚',
     body: remoteMessage?.data?.body ?? 'You have a new message',

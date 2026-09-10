@@ -36,6 +36,7 @@ import StorageService from '../utils/Storage';
 import CustomAlert from '../components/CustomAlert';
 import Toast from 'react-native-toast-message';
 import { DOMAIN } from '../var';
+import { getCurrentLocation } from '../services/driverLocationTracker';
 
 const DOCS = [
   { label: 'Driving License' },
@@ -119,7 +120,7 @@ const ProfileScreen = () => {
           cropping: true,
         });
         uploadDP(image.path);
-      } catch {}
+      } catch { }
     }, 300);
   };
 
@@ -133,7 +134,7 @@ const ProfileScreen = () => {
           cropping: true,
         });
         uploadDP(image.path);
-      } catch {}
+      } catch { }
     }, 300);
   };
   const onRefresh = async () => {
@@ -151,7 +152,7 @@ const ProfileScreen = () => {
   const handleDeleteAccount = async () => {
     try {
       const res = await api.delete('/admin/auth/deleteUser');
-        if (res?.data?.success) {
+      if (res?.data?.success) {
         Toast.show({ type: 'success', text1: res.data.message || 'Account deleted successfully' });
         authValue.signOut();
       }
@@ -184,15 +185,31 @@ const ProfileScreen = () => {
     : null;
   const isApproved = profile?.status === 'APPROVED';
 
+
+  const gotoOnline = async () => {
+
+    try {
+      const location = await getCurrentLocation();
+      console.log(location)
+      const res = await api.post('/user/auth/isOnline', { status: false, latitude: location.lat, longitude: location.long });
+      if (res.data.success) {
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+
+
   return (
-  <SafeWrapper>
-  <View style={{ paddingVertical: verticalScale(0), backgroundColor:Colors.cardBg }}>
-    <Header
-      simpleHeader
-      simpleHeaderTitle="Profile"
-      showBackButton
-    />
-  </View>
+    <SafeWrapper>
+      <View style={{ paddingVertical: verticalScale(0), backgroundColor: Colors.cardBg }}>
+        <Header
+          simpleHeader
+          simpleHeaderTitle="Profile"
+          showBackButton
+        />
+      </View>
 
       <ScrollView
         style={styles.bg}
@@ -446,7 +463,7 @@ const ProfileScreen = () => {
           <TouchableOpacity
             style={styles.detailItem}
             activeOpacity={0.7}
-            // onPress={() => Linking.openURL('tel:+5921234567')}
+          // onPress={() => Linking.openURL('tel:+5921234567')}
           >
             <View style={styles.iconBg}>
               <PhoneIcon />
@@ -461,7 +478,7 @@ const ProfileScreen = () => {
           <TouchableOpacity
             style={[styles.detailItem, { marginBottom: 0 }]}
             activeOpacity={0.7}
-            // onPress={() => Linking.openURL('tel:+19876543210')}
+          // onPress={() => Linking.openURL('tel:+19876543210')}
           >
             <View style={styles.iconBg}>
               <PhoneIcon />
@@ -554,31 +571,32 @@ const ProfileScreen = () => {
         ]}
       />
       <CustomAlert
-  visible={logoutAlertVisible}
-  title="Logout"
-  message="Are you sure you want to logout from your account?"
-  onDismiss={() => setLogoutAlertVisible(false)}
-  buttons={[
-    {
-      text: 'Cancel',
-      style: 'cancel',
-      onPress: () => setLogoutAlertVisible(false),
-    },
-    {
-      text: 'Logout',
-      style: 'destructive',
-      onPress: async () => {
-        setLogoutAlertVisible(false);
-        try {
-          await AsyncStorage.multiRemove(['token', 'user', 'currentScreen']);
-          authValue.signOut();
-        } catch (error) {
-          console.log('Logout error:', error);
-        }
-      },
-    },
-  ]}
-/>
+        visible={logoutAlertVisible}
+        title="Logout"
+        message="Are you sure you want to logout from your account?"
+        onDismiss={() => setLogoutAlertVisible(false)}
+        buttons={[
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => setLogoutAlertVisible(false),
+          },
+          {
+            text: 'Logout',
+            style: 'destructive',
+            onPress: async () => {
+              setLogoutAlertVisible(false);
+              try {
+                await gotoOnline()
+                await AsyncStorage.multiRemove(['token', 'user', 'currentScreen']);
+                authValue.signOut();
+              } catch (error) {
+                console.log('Logout error:', error);
+              }
+            },
+          },
+        ]}
+      />
     </SafeWrapper>
   );
 };
