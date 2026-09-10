@@ -16,6 +16,7 @@ import { Colors } from '../constants/Colors';
 import { scale, fontScale } from '../utils/scaling';
 import Header from '../components/common/Header';
 import RequestCard from '../components/RequestCard';
+import NewOrderCard from '../components/NewOrderCard';
 import { useAuth } from '../context/AuthContext';
 import useAxios from '../hooks/useAxios';
 import SendQuoteModal from '../components/SendQuoteModal';
@@ -73,6 +74,7 @@ interface OrderUI {
     price: number;
     eta: string;
   };
+  customerPhone?: string;
 }
 
 type HomeStackParamList = {
@@ -192,11 +194,19 @@ export default function  AllOrders() {
             _id: i._id,
             orderId: i.orderNumber || i.orderId || i._id,
             status: i.orderStatus || i.status,
+            // Mark food orders explicitly so the UI renders the right card
+            serviceType: i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.serviceType),
             customerId: i.customerId || {
               _id: i.userAuthId?._id || i.userAuthId || '',
-              fullName: address?.contactName || i.userAuthId?.fullName || '',
+              fullName: i.deliveryAddress?.contactName || i.userAuthId?.fullName || '',
               portraitPhoto: i.userAuthId?.portraitPhoto || '',
             },
+            // Preserve phone for active food order detail modal
+            customerPhone: i.customerPhone
+              || i.userAuthId?.fullPhoneNumber
+              || (i.userAuthId?.countryCode && i.userAuthId?.phoneNumber
+                  ? `${i.userAuthId.countryCode} ${i.userAuthId.phoneNumber}`
+                  : undefined),
             pickup,
             drop,
             package: i.package || {
@@ -233,22 +243,29 @@ export default function  AllOrders() {
         });
 
       const res = await fetchOrdersByType('ALL');
-      let activeRes: any = { data: [] };
+      let activeOrders: OrderUI[] = [];
 
       try {
-        activeRes = await fetchOrdersByType('ACTIVE');
+        const activeRes = await fetchOrdersByType('ACTIVE');
+        activeOrders = formatOrders(activeRes.data || []).map(o => ({
+          ...o,
+          isAccepted: true, // these are confirmed active — driver owns them
+        }));
       } catch (activeError) {
         console.log('Active driver orders error', activeError);
       }
 
-      console.log('Response', res);
-      console.log('Active Response', activeRes);
-      console.log('lat lng', location.lat, location.long);
+      const pendingOrders = formatOrders(res.data || []);
 
+      // Merge: active first, then pending. Deduplicate by _id (active wins).
+      const activeIds = new Set(activeOrders.map(o => o._id));
       const formatted = [
-        ...formatOrders(activeRes.data || []),
-        ...formatOrders(res.data || []),
+        ...activeOrders,
+        ...pendingOrders.filter(o => !activeIds.has(o._id)),
       ];
+
+      console.log('Pending Response', res);
+      console.log('Active orders', activeOrders);
 
       const uniqueOrders = formatted.filter(
         (order, index, self) =>
@@ -353,10 +370,9 @@ export default function  AllOrders() {
   ];
 
   const isActiveOrder = (order: OrderUI) =>
-    order.isAccepted ||
+    order.isAccepted === true ||
     normalizeStatus(order.driverRequestStatus) === 'ACCEPTED' ||
     activeStatuses.includes(normalizeStatus(order.status));
-    // activeStatuses.includes(normalizeStatus(order.tripStatus));
 
   const isClosedOrder = (order: OrderUI) =>
     normalizeStatus(order.driverRequestStatus) === 'REJECTED' ||
@@ -498,6 +514,7 @@ export default function  AllOrders() {
           ListEmptyComponent={renderEmptyList}
           renderItem={({ item }) => {
             const isCab = item.serviceType === 'CAB';
+            const isFoodOrder = item.serviceType === 'food' || item.serviceType === 'FOOD';
             const commonProps = {
               name: item.customerId?.fullName || 'Unknown Customer',
               photo: item.customerId?.portraitPhoto || '',
@@ -518,14 +535,49 @@ export default function  AllOrders() {
 
             // 🔵 ACCEPTED
             if (isActiveOrder(item)) {
+              const totalAmount = item.totalAmount
+                ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount)
+                : undefined;
+              const displayPrice = item.finalPrice ?? item.price?.totalFare ?? totalAmount;
               return (
                 <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
                   <RequestCard
                     {...commonProps}
                     status={item.status === 'COMPLETED' ? 'COMPLETED' : 'ACCEPTED'}
-                    price={item.finalPrice || item.price?.totalFare}
+                    price={displayPrice}
                   />
                 </TouchableOpacity>
+              );
+            }
+
+            // 🍕 FOOD ORDER — Accept / Ignore buttons
+            if (isFoodOrder) {
+              return (
+                <NewOrderCard
+                  orderId={item.orderId}
+                  orderMongoId={item._id}
+                  serviceType="food"
+                  serviceName={item?.serviceId?.name}
+                  customerName={item.customerId?.fullName || 'Customer'}
+                  pickupAddress={item.pickup?.address || ''}
+                  dropAddress={item.drop?.address || ''}
+                  distance={item.distance}
+                  itemSummary={item.package?.itemName}
+                  totalAmount={item.totalAmount ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount) : undefined}
+                  currency={item.currency || 'BND'}
+                  createdAt={item.createdAt}
+                  status="PENDING"
+                  onPress={() => openOrderDetail(item)}
+                  onAccept={() => {
+                    setCancelledOrderIds(prev => [...prev, item._id]);
+                    setOrders(prev => prev.filter(o => o._id !== item._id));
+                    fetchDriverOrders(searchRef.current);
+                  }}
+                  onIgnore={() => {
+                    setCancelledOrderIds(prev => [...prev, item._id]);
+                    setOrders(prev => prev.filter(o => o._id !== item._id));
+                  }}
+                />
               );
             }
 
@@ -560,7 +612,7 @@ export default function  AllOrders() {
               );
             }
 
-            // 🔴 PENDING
+            // 🔴 PENDING (parcel / cab)
             return (
               <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
                 <RequestCard

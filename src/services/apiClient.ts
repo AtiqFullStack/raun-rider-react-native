@@ -135,6 +135,30 @@ export const api = {
     }
   },
 
+  patch: async (endpoint: string, data: any = {}) => {
+    await checkNetwork();
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetchWithTimeout(`${BASE_URL}${endpoint}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`API PATCH Error ${response.status}:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText || 'Request failed'}`);
+      }
+      return { data: await response.json() };
+    } catch (error: any) {
+      console.error('API PATCH Error:', error.message);
+      if (error.message === 'NO_INTERNET' || error.message === 'Network request failed') {
+        throw new Error('No internet connection. Please check your network and try again.');
+      }
+      throw error;
+    }
+  },
+
   postFormData: async (endpoint: string, formData: FormData) => {
     await checkNetwork();
     try {

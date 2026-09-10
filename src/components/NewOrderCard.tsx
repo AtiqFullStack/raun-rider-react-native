@@ -14,6 +14,7 @@ interface NewOrderCardProps {
   orderId: string;          // readable order number e.g. "R-FD-MTR96TE3"
   orderMongoId?: string;    // actual _id for API calls
   serviceType?: string;     // "food" | "CAB" | "parcel" etc.
+  serviceName?: string;     // human-readable name from serviceId.name e.g. "Food Delivery"
   customerName: string;
   pickupAddress: string;
   dropAddress: string;
@@ -55,6 +56,7 @@ export default function NewOrderCard({
   orderId,
   orderMongoId,
   serviceType,
+  serviceName,
   customerName,
   pickupAddress,
   dropAddress,
@@ -70,6 +72,7 @@ export default function NewOrderCard({
 }: NewOrderCardProps) {
   const [actionLoading, setActionLoading] = React.useState<'accept' | 'ignore' | null>(null);
   const svc = SERVICE_CONFIG[serviceType ?? ''] || DEFAULT_SVC;
+  const badgeLabel = serviceName || svc.label;
   const st = STATUS_CONFIG[status] || STATUS_CONFIG.PENDING;
   const isFoodOrder = serviceType === 'food' || serviceType === 'FOOD';
 
@@ -112,19 +115,19 @@ export default function NewOrderCard({
       <View style={styles.topRow}>
         <View style={[styles.serviceBadge, { backgroundColor: svc.bg }]}>
           <View style={[styles.dot, { backgroundColor: svc.dot }]} />
-          <Text style={[styles.serviceLabel, { color: svc.color }]}>{svc.label}</Text>
+          <Text style={[styles.serviceLabel, { color: svc.color }]}>{badgeLabel}</Text>
         </View>
         <Text style={styles.orderId} numberOfLines={1}>{orderId}</Text>
         <Text style={styles.timeText}>{timeAgo(createdAt)}</Text>
       </View>
 
       {/* ── customer name + status ── */}
-      <View style={styles.nameRow}>
+      {/* <View style={styles.nameRow}>
         <Text style={styles.customerName} numberOfLines={1}>{customerName}</Text>
         <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
           <Text style={[styles.statusText, { color: st.color }]}>{st.label}</Text>
         </View>
-      </View>
+      </View> */}
 
       {/* ── divider ── */}
       <View style={styles.divider} />

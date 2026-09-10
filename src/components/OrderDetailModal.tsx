@@ -309,6 +309,13 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                   </Section>
                 )}
 
+                {/* Food order: customer phone when active */}
+                {isFoodOrder && order.isAccepted && (order as any).customerPhone && (
+                  <Section title="CUSTOMER">
+                    <InfoRow label="Phone" value={(order as any).customerPhone} />
+                  </Section>
+                )}
+
                 {/* CAB: passenger info */}
                 {isCab && (
                   <Section title="PASSENGER">

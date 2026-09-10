@@ -311,8 +311,16 @@ const [syncLoading, setSyncLoading] = useState(false);
   }, [fcmToken]);
 
 
+  // On mount: check online status first, then fetch orders based on result
   useEffect(() => {
-    fetchDriverOrders('ACTIVE');
+    const init = async () => {
+      await fetchDashboardData();
+      const online = await checkIsOnline();
+      // Pass the freshly resolved online status so fetchDriverOrders
+      // doesn't read a stale closure value
+      fetchDriverOrders('ACTIVE', online);
+    };
+    init();
   }, []);
 
   const onRefresh = async () => {
@@ -321,34 +329,21 @@ const [syncLoading, setSyncLoading] = useState(false);
     setRefreshing(false);
   };
 
-  console.log(dashboardData)
-  const checkIsOnline = async () => {
-    if (!user) return;
+  const checkIsOnline = async (): Promise<boolean> => {
+    if (!user) return false;
     try {
-      const res = await api.get(`/user/auth/get-online?name=${user.firstName}`)
-      console.log(res)
+      const res = await api.get(`/user/auth/get-online?name=${user.firstName}`);
       if (res.data?.success) {
-        if (res.data.data.isOnline) {
-          console.log(res.data.data.isOnline, 'online')
-          setIsOnline(true);
-          setUser((prev: any) => ({ ...prev, isOnline: true }));
-        } else {
-          console.log(res.data.data.isOnline, 'offLine')
-          setIsOnline(false)
-          setUser((prev: any) => ({ ...prev, isOnline: false }));
-        }
+        const online = !!res.data.data.isOnline;
+        setIsOnline(online);
+        setUser((prev: any) => ({ ...prev, isOnline: online }));
+        return online;
       }
     } catch (error) {
-      console.log('error hai', error)
+      console.log('error hai', error);
     }
-  }
-
-  useEffect(() => {
-    fetchDashboardData();
-    checkIsOnline()
-  }, []);
-
-  
+    return isOnline;
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -417,37 +412,15 @@ const [syncLoading, setSyncLoading] = useState(false);
     },
   ];
 
-  const fetchDriverOrders = async (type: 'ALL' | 'ACTIVE') => {
-    if (!isOnline) {
+  const fetchDriverOrders = async (type: 'ALL' | 'ACTIVE', currentlyOnline = isOnline) => {
+    if (!currentlyOnline) {
       setOrders([]);
       return;
     }
     try {
       const location = await getCurrentLocation();
-      console.log(location)
-console.log({
-        method: 'GET',
-        url: '/driver/food-orders',
-        params: {
-          latitude: location.lat,
-          longitude: location.long,
-          type,
-        }})
-      const res = await fetchData({
-        method: 'GET',
-        url: '/driver/food-orders',
-        params: {
-          latitude: location.lat,
-          longitude: location.long,
-          type,
-        },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
- 
 
-      const formatOrders = (data: any): OrderUI[] => {
+      const formatOrders = (data: any, forceAccepted = false): OrderUI[] => {
         const items = Array.isArray(data) ? data : data?.orders || [];
 
         return items.map((i: any) => {
@@ -470,16 +443,37 @@ console.log({
             ? calculateDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng)
             : undefined);
 
+          // Build a human-readable customer label from whatever the API gives us.
+          // Food orders populate userAuthId with phone fields, not a fullName.
+          const userAuth = i.userAuthId;
+          const customerFullName =
+            i.customerId?.fullName ||
+            userAuth?.fullName ||
+            userAuth?.fullPhoneNumber ||
+            (userAuth?.countryCode && userAuth?.phoneNumber
+              ? `${userAuth.countryCode} ${userAuth.phoneNumber}`
+              : null) ||
+            address?.contactName ||
+            'Customer';
+
           return {
             ...i,
-            // Keep the Mongo ID for actions; show the readable order number.
             _id: i._id,
             orderId: i.orderNumber || i.orderId || i._id,
             status: i.orderStatus || i.status,
+            // Mark as accepted if the API returned it under ACTIVE type, or if it
+            // already carries an accepted status.
+            isAccepted: forceAccepted || i.isAccepted ||
+              ['out_for_delivery', 'confirmed', 'preparing', 'ready'].includes(i.orderStatus) && !!i.assignedDriverId ||
+              i.driverRequestStatus === 'ACCEPTED',
             customerId: i.customerId || {
-              _id: i.userAuthId?._id || i.userAuthId || '',
-              fullName: address?.contactName || i.userAuthId?.fullName || '',
-              portraitPhoto: i.userAuthId?.portraitPhoto || '',
+              _id: userAuth?._id || userAuth || '',
+              fullName: customerFullName,
+              portraitPhoto: userAuth?.portraitPhoto || '',
+              // Carry phone so OrderDetailModal can display it
+              phone: userAuth?.phoneNumber || '',
+              countryCode: userAuth?.countryCode || '',
+              fullPhoneNumber: userAuth?.fullPhoneNumber || '',
             },
             pickup,
             drop,
@@ -501,8 +495,22 @@ console.log({
         });
       };
 
-      const formatted = formatOrders(res.data);
+      const res = await fetchData({
+        method: 'GET',
+        url: '/driver/food-orders',
+        params: {
+          latitude: location.lat,
+          longitude: location.long,
+          type,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
+      // When fetching ACTIVE orders, mark every returned order as accepted so
+      // the active-orders section always renders them.
+      const formatted = formatOrders(res.data, type === 'ACTIVE');
       setOrders(formatted);
     } catch (error: any) {
       console.log('Driver orders error', error);
