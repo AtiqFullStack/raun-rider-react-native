@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import GlobalStatusBar from './GlobalStatusBar';
+
 
 interface SafeWrapperProps {
   children: React.ReactNode;
@@ -16,7 +16,7 @@ const SafeWrapper: React.FC<SafeWrapperProps> = ({
 }) => {
   return (
     <>
-      <GlobalStatusBar />
+   
       <SafeAreaView
         style={[styles.safeArea, { backgroundColor }]}
         edges={['left', 'right', 'bottom']}

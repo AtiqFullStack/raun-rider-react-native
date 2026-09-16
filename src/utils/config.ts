@@ -1,8 +1,9 @@
 // export const BASE_URL = 'https://v28lskqk-1111.inc1.devtunnels.ms/api';
-export const BASE_URL = 'https://raunbn.com/backend/api';
+export const BASE_URL = 'https://raunbn.com/backend/api';   
+// export const BASE_URL = 'https://30fb-2406-b400-75-ce61-254d-a1c9-1360-69da.ngrok-free.app/api';
 
 
-export const SOCKET_URL='https://backend.bankaypos.wise-hustlers.com'
+export const SOCKET_URL='https://socket.raunbn.com'
 // export const SOCKET_URL='https://v28lskqk-7001.inc1.devtunnels.ms'
 export const IMAGE_URL = "https://raunbn.com/backend"
 

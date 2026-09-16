@@ -1,8 +1,7 @@
 import {
   Animated,
   Image,
-  Platform,
-  StatusBar,
+
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,6 +26,7 @@ import ForegroundService, { registerLocationModalHandler } from '../../services/
 import usePermissions from '../../hooks/usePermissions';
 import BellSvgCode from '../../assets/svg/BellCodeSvg';
 import { getCurrentLocation } from '../../services/driverLocationTracker';
+import GlobalStatusBar from '../GlobalStatusBar';
 
 const NAVY = '#014D4D';
 const GOLD = '#D0A645';
@@ -108,14 +108,15 @@ export default function Header(props: any) {
       end={{ x: 1, y: 1 }}
       style={[
         styles.container,
-        {
-          paddingTop:
-            Platform.OS === 'ios'
-              ? scale(10)
-              : (StatusBar.currentHeight || 0) + scale(8),
-        },
+        // {
+        //   paddingTop:
+        //     Platform.OS === 'ios'
+        //       ? scale(10)
+        //       : (StatusBar.currentHeight || 0) + scale(8),
+        // },
       ]}
     >
+      <GlobalStatusBar/>
       <BgLocationPermissionModal />
 
 
@@ -234,6 +235,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 22,
     overflow: 'hidden',
     paddingHorizontal: vw(4),
+    // paddingTop:20
   },
   decorStrip: {
     flexDirection: 'row',

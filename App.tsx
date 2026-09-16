@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Alert, BackHandler, PermissionsAndroid, Platform, StatusBar, View } from 'react-native';
+import { Alert, BackHandler, PermissionsAndroid, Platform, View } from 'react-native';
 import {
   NavigationContainer,
   NavigationContainerRef,
@@ -429,7 +429,7 @@ function AppComp() {
 
   return (
     <View style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? insets.bottom : 0, paddingTop: insets.top }}>
-      <StatusBar backgroundColor={Colors.primary} barStyle="light-content" />
+      
       <>
         {/* 🔹 HOME */}
         {currentScreen === 'home' && (

@@ -19,8 +19,8 @@ type SocketContextType = {
 export const SocketContext = createContext<SocketContextType>({
   socket: null,
   isSocketConnected: false,
-  connectSocket: () => {},
-  disconnectSocket: () => {},
+  connectSocket: () => { },
+  disconnectSocket: () => { },
 });
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
@@ -28,13 +28,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
 
+  console.log(socket)
   const connectSocket = async (token?: string) => {
     if (socketRef.current) return;
 
-    const authToken = token || (await AsyncStorage.getItem('authToken'));
-
+    const authToken = token || (await AsyncStorage.getItem('token'));
 
     const newSocket = io(SOCKET_URL, {
+      extraHeaders: {
+        Authorization: `Bearer ${authToken}`,
+      },
       path: '/socket.io',
       transports: ['polling', 'websocket'],
       auth: authToken ? { token: authToken } : undefined,
@@ -55,7 +58,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     setSocket(newSocket); // 🔥 important
 
     newSocket.on('connect', () => {
-  
+
       setIsSocketConnected(true);
     });
 

@@ -96,7 +96,7 @@ const TripCompletionScreen = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+   
 
       {/* Header with Trip Completion title */}
       <CommonHeader

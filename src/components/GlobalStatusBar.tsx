@@ -1,11 +1,12 @@
 import React from 'react';
 import { StatusBar, Platform } from 'react-native';
+import { Colors } from '../constants/Colors';
 
 const GlobalStatusBar = () => {
   return (
     <StatusBar
-      barStyle="dark-content"
-      backgroundColor="transparent"
+      barStyle="light-content"
+      backgroundColor={'red'}
       translucent={false}
     />
   );

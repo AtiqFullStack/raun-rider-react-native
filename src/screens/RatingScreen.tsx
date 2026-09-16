@@ -8,7 +8,7 @@ import {
   TextInput,
   ScrollView,
   SafeAreaView,
-  StatusBar,
+
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -201,7 +201,7 @@ console.log(trip, "rating screnn trip")
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
 
       {/* Header */}
       <CommonHeader

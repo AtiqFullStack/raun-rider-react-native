@@ -56,7 +56,7 @@ export const api = {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return { data: await response.json() };
     } catch (error: any) {
-      console.error('API GET Error:', error.message);
+      console.error(`API GET Error: ${endpoint}`, error.message);
       if (error.message === 'NO_INTERNET' || error.message === 'Network request failed') {
         throw new Error('No internet connection. Please check your network and try again.');
       }

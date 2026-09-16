@@ -55,25 +55,27 @@ const formatDuration = (seconds: number) => {
 
 // 🌐 API CALL
 const apiCall = async (data: any) => {
-  const storedToken = await StorageService.getItem('token')
-  const tripId = await StorageService.getItem('tripId')
+  const storedToken = await StorageService.getItem('token');
+  const tripId = await StorageService.getItem('tripId');  // actual orderId
+console.log({tripId})
+  if (!tripId) return;  // active order nahi hai to location bhejne ki zaroorat nahi
 
   try {
     await axios.post(
-      `${BASE_URL}/user/auth/updateLatLong?lat=${data.latitude}&long=${data.longitude}&timestamp=${data.timestamp}&tripId=${tripId}`,
+      `${BASE_URL}/user/auth/updateLatLong`,
       {
         lat: data.latitude,
         long: data.longitude,
         timestamp: data.timestamp,
-        tripId:tripId
+        tripId,
       },
       {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          Authorization: `Bearer ${storedToken}`
-        }
-      }
+          Authorization: `Bearer ${storedToken}`,
+        },
+      },
     );
   } catch (error) {
     console.log('❌ API Error:', error?.response?.data || error.message);

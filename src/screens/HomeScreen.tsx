@@ -45,6 +45,8 @@ import {
   Keyboard,
 } from 'react-native';
 import { onlineCalculator } from '../utils/converter';
+import StorageService from '../utils/Storage';
+import GlobalStatusBar from '../components/GlobalStatusBar';
 
 export interface OrderUI {
   _id: string;
@@ -565,12 +567,13 @@ const [syncLoading, setSyncLoading] = useState(false);
         contentContainerStyle={{ flexGrow: 1 }}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[Colors.secondaryDark]} // Android
-            tintColor={Colors.secondaryDark} // iOS
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[Colors.secondaryDark]} // Android
+          tintColor={Colors.secondaryDark} // iOS
           />
         }
+    
       >
         <View style={{ flex: 1 }}>
           {/* ---------- Pending Approval Banner ---------- */}
@@ -697,7 +700,9 @@ const [syncLoading, setSyncLoading] = useState(false);
                       setSelectedOrderForDetail(item);
                       setIsDetailModalVisible(true);
                     }}
-                    onGoToTrip={() => {
+                    onGoToTrip={async() => {
+                      console.log(item)
+                      await StorageService.setItem('tripId',item._id)
                       navigation.navigate('RideDetails' as never, {
                         order: {
                           ...item,
