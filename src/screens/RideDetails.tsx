@@ -1,1716 +1,658 @@
-import React, { useEffect, useState, useRef, useContext } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging from '@react-native-firebase/messaging';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import CompassHeading from 'react-native-compass-heading';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Linking,
-  Image,
-  Animated,
-  Alert,
-  TextInput,
-  Modal,
-    PanResponder,
+  Alert, Animated, Linking, Modal, Platform,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import MapView, { AnimatedRegion } from 'react-native-maps';
+import Toast from 'react-native-toast-message';
+import RideMap from '../components/ride/RideMap';
+import TripInfoSheet from '../components/ride/TripInfoSheet';
+import CancelReasonModal from '../components/ride/CancelReasonModal';
 import CustomAlert from '../components/CustomAlert';
+import { Colors } from '../constants/Colors';
+import { SocketContext } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/apiClient';
+import { useDriverFoodOrderService } from '../services/driverFoodOrderService';
 import {
   getCurrentLocation,
   startDriverLocationTracking,
   stopDriverLocationTracking,
 } from '../services/driverLocationTracker';
-import { useNavigation } from '@react-navigation/native';
-import CompassHeading from 'react-native-compass-heading';
-
-import MapView, { Marker, Polyline, AnimatedRegion } from 'react-native-maps';
-import { RouteProp, useRoute } from '@react-navigation/native';
-import { Colors } from '../constants/Colors';
-import { ScrollView } from 'react-native';
-import { scale, fontScale } from '../utils/scaling';
-import { BASE_URL, BlueLocation, RedLocation } from '../utils/config';
-import ReceiverIcon from '../assets/svg/receiverIcon.svg';
-
-import { PermissionsAndroid, Platform } from 'react-native';
-
-import BottomBG1 from '../assets/svg/bottomBg1.svg';
-
-import CallSvg from '../assets/svg/Icon.svg';
-import MessageSvg from '../assets/svg/Comment.svg';
-import NavigateSvg from '../assets/svg/navigateSvg.svg';
-import CrossIcon from '../assets/svg/cross.svg';
-import Toast from 'react-native-toast-message';
-import messaging from '@react-native-firebase/messaging';
-
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SocketContext } from '../context/SocketContext';
 import { requestLocationPermission } from '../utils/requestLocationPermission';
-import { useAuth } from '../context/AuthContext';
 import Storage from '../utils/Storage';
-import { api } from '../services/apiClient';
-import ChatSvgCode from '../assets/svg/ChatSvgCode';
-import NavigateSvgCode from '../assets/svg/NavigateSvgCode';
+import { BASE_URL } from '../utils/config';
+import { fontScale, scale } from '../utils/scaling';
 
-type MarkerType = 'SENDER' | 'RECEIVER';
-type RideDetailsRouteProp = RouteProp<
-  {
-    RideDetails: {
-      order: any;
-    };
-  },
-  'RideDetails'
->;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type RideDetailsRouteProp = RouteProp<{ RideDetails: { order: any } }, 'RideDetails'>;
+
+const TRIP_STATUS_FLOW: Record<string, string> = {
+  CREATED: 'START_RIDE',
+  START_RIDE: 'ARRIVED_AT_PICKUP',
+  ARRIVED_AT_PICKUP: 'LOAD_COLLECTED',
+  LOAD_COLLECTED: 'DELIVERY_STARTED',
+  DELIVERY_STARTED: 'DELIVERY_COMPLETED',
+};
+
+const CANCELLABLE_STATUSES = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP'];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const normalizeId = (value: any): string | null => {
+  if (!value) return null;
+  if (typeof value === 'object') return value._id || value.id || null;
+  return String(value).replace(/"/g, '');
+};
+
+const getText = (...values: any[]): string => {
+  const found = values.find(v => v !== null && v !== undefined && String(v).trim() && String(v).trim().toLowerCase() !== 'undefined');
+  return found !== undefined ? String(found).trim() : '';
+};
+
+const decodePolyline = (encoded: string) => {
+  const points: { latitude: number; longitude: number }[] = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+  return points;
+};
+
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3;
+  const φ1 = (lat1 * Math.PI) / 180, φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180, Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function RideDetailsScreen() {
   const route = useRoute<RideDetailsRouteProp>();
+  const navigation = useNavigation<any>();
+  const { user } = useAuth();
+  const { socket } = useContext(SocketContext);
+
   const { order } = route.params;
-  const normalizeId = (value: any) => {
-    if (!value) return null;
-    if (typeof value === 'object') {
-      return value._id || value.id || null;
-    }
-    return String(value).replace(/"/g, '');
-  };
   const activeOrderId = normalizeId(order?._id || order?.id);
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [orderDetails, setOrderDetails] = useState<any>(order);
   const [activeTripId, setActiveTripId] = useState<string | null>(
     normalizeId(order?.tripId || order?.trip?._id || order?.trip),
   );
-  const [navigationMode, setNavigationMode] = useState(false);
-  const coordinate = useRef(
-    new AnimatedRegion({
-      latitude: 0,
-      longitude: 0,
-      latitudeDelta: 0,
-      longitudeDelta: 0,
-    }),
-  ).current;
-  const [tripData, setTripData] = useState<any>(null);
-  const [completeModalVisible, setCompleteModalVisible] = useState(false);
-  const [driverLocation, setDriverLocation] = useState<any>(null);
-  const [customReason, setCustomReason] = useState('');
-  const [heading, setHeading] = useState(0);
-  const [rideStarted, setRideStarted] = useState(false);
-  const [showContent, setShowContent] = useState(true);
-  const [tripStatus, setTripStatus] = useState(
-    order?.tripStatus || order?.trip?.status || 'CREATED',
-  );
-  const [cancelAlertVisible, setCancelAlertVisible] = useState(false);
-  const [statusTimestamps, setStatusTimestamps] = useState<
-    Record<string, string>
-  >({});
+  const [tripStatus, setTripStatus] = useState<string>(order?.tripStatus || order?.trip?.status || 'CREATED');
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
   const [routeDistance, setRouteDistance] = useState('');
   const [routeDuration, setRouteDuration] = useState('');
   const [steps, setSteps] = useState<any[]>([]);
-  const [currentStep, setCurrentStep] = useState<any>(null);
-  const [cancelReasonModalVisible, setCancelReasonModalVisible] =
-    useState(false);
-  const [selectedReason, setSelectedReason] = useState<string | null>(null);
-  const CANCEL_REASONS = [
-    'Vehicle breakdown',
-    'Personal emergency',
-    'Wrong location',
-    'Customer not responding',
-    'Other',
-  ];
-  const [routeCoords, setRouteCoords] = useState<
-    { latitude: number; longitude: number }[]
-  >([]);
-  const { user } = useAuth();
-  const [orderDetails, setOrderDetails] = useState<any>(order);
+  const [rideStarted, setRideStarted] = useState(false);
+  const [showSheet, setShowSheet] = useState(true);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancelAlertVisible, setCancelAlertVisible] = useState(false);
+  const [pendingCancelReason, setPendingCancelReason] = useState('');
+  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [tripData, setTripData] = useState<any>(null);
+  const [statusTimestamps, setStatusTimestamps] = useState<Record<string, string>>({});
+  const [currentHeading, setCurrentHeading] = useState(0);
+  const [foodOrderStatus, setFoodOrderStatus] = useState<string>(
+    order?.orderStatus ?? 'ready',
+  );
 
+  // ── Refs ───────────────────────────────────────────────────────────────────
+  const mapRef = useRef<MapView>(null);
+  const tripStatusRef = useRef(tripStatus);
+  const lastHeadingRef = useRef(0);
+  const lastCancelKeyRef = useRef<string | null>(null);
+  const coordinate = useRef(new AnimatedRegion({ latitude: 0, longitude: 0, latitudeDelta: 0, longitudeDelta: 0 })).current;
 
   const currentOrder = orderDetails || order;
-  const getTextValue = (...values: any[]) => {
-    const value = values.find(item => {
-      if (item === null || item === undefined) return false;
-      const text = String(item).trim();
-      return text.length > 0 && text.toLowerCase() !== 'undefined';
-    });
 
-    return value === null || value === undefined ? '' : String(value).trim();
-  };
+  // ── Derived values (food order response se map) ────────────────────────────
+  const isFoodOrder = String(currentOrder?.orderNumber || currentOrder?._id || order?._id || '').includes('R-FD');
+  const { updateStatus: updateFoodStatus, cancelOrder: cancelFoodOrder } = useDriverFoodOrderService();
 
+  // pickup = restaurant location, drop = deliveryAddress
+  const pickup = isFoodOrder ? {
+    lat: currentOrder?.restaurantId?.location?.coordinates?.latitude ?? currentOrder?.restaurantSnapshot?.location?.coordinates?.latitude,
+    lng: currentOrder?.restaurantId?.location?.coordinates?.longitude ?? currentOrder?.restaurantSnapshot?.location?.coordinates?.longitude,
+    address: currentOrder?.restaurantId?.location?.address ?? currentOrder?.restaurantSnapshot?.location?.address,
+  } : (currentOrder?.pickup || order?.pickup);
 
-const tripDetailsPanResponder = useRef(
-  PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      return gestureState.dy > 15 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-    },
-    onPanResponderRelease: (_, gestureState) => {
-      if (gestureState.dy > 60) {
-        setShowContent(false);
-      }
-    },
-  }),
-).current;
+  const drop = isFoodOrder ? {
+    lat: currentOrder?.deliveryAddress?.latitude,
+    lng: currentOrder?.deliveryAddress?.longitude,
+    address: currentOrder?.deliveryAddress?.formattedAddress ?? currentOrder?.deliveryAddress?.street,
+  } : (currentOrder?.drop || order?.drop);
 
-  const packageInfo = currentOrder?.package || {};
-  const packagePhotoDescription = Array.isArray(packageInfo?.photos)
-    ? getTextValue(...packageInfo.photos.map((photo: any) => photo?.description))
-    : '';
-  const packageWeight = getTextValue(
-    packageInfo?.weight && `${packageInfo.weight} ${packageInfo?.weightUnit || ''}`,
-  );
-  const orderTitle = getTextValue(
-    packageInfo?.itemName,
-    packageInfo?.name,
-    currentOrder?.itemName,
-    currentOrder?.subCategoryId?.name,
-    currentOrder?.categoryId?.name,
-    packageWeight,
-    'Package',
-  );
-  const orderInstruction = getTextValue(
-    packageInfo?.description,
-    currentOrder?.instruction,
-    currentOrder?.instructions,
-    currentOrder?.orderInstruction,
-    currentOrder?.deliveryInstruction,
-    currentOrder?.specialInstruction,
-    currentOrder?.notes,
-    packagePhotoDescription,
-    'No instruction added',
-  );
+  const customerPhone = isFoodOrder
+    ? currentOrder?.userAuthId?.fullPhoneNumber
+    : (currentOrder?.sender?.phone ?? currentOrder?.receiver?.phone);
 
-  const mapRef = useRef<MapView | null>(null);
-  const tripStatusRef = useRef(tripStatus);
-  const lastOrderCancelNoticeRef = useRef<string | null>(null);
-  // 1. Add rotation animated value ref
-  const rotationAnim = useRef(new Animated.Value(0)).current;
-  const lastHeadingRef = useRef(0);
-  const [currentHeading, setCurrentHeading] = React.useState(0);
+  const customerName = isFoodOrder
+    ? (currentOrder?.deliveryAddress?.contactName ?? currentOrder?.userAuthId?.fullPhoneNumber)
+    : (currentOrder?.customerId?.fullName ?? currentOrder?.sender?.name);
 
-  const { socket } = useContext(SocketContext);
-  // const driverIdRef = useRef<string | null>(null);
+  const orderTitle = isFoodOrder
+    ? currentOrder?.items?.map((i: any) => `${i.name} x${i.quantity}`).join(', ') || 'Food Order'
+    : getText(currentOrder?.package?.itemName, currentOrder?.itemName, currentOrder?.subCategoryId?.name, 'Package');
 
-  const fetchTripIdFromOrder = async () => {
-    if (!activeOrderId) return null;
+  const orderInstruction = isFoodOrder
+    ? getText(currentOrder?.notes, currentOrder?.deliveryAddress?.landmark, 'No instruction')
+    : getText(currentOrder?.package?.description, currentOrder?.instruction, currentOrder?.notes, 'No instruction');
 
-    try {
-      const res = await api.get(`/user/order/orderDetail/${activeOrderId}`);
-      const detail = res?.data?.data || res?.data;
-      if (detail) {
-        setOrderDetails((prev: any) => ({
-          ...(prev || {}),
-          ...detail,
-        }));
-      }
-      const recoveredTripId = normalizeId(
-        detail?.tripId || detail?.trip?._id || detail?.trip,
-      );
+  const earning = isFoodOrder
+    ? Number(currentOrder?.totalAmount?.$numberDecimal ?? currentOrder?.totalAmount ?? 0)
+    : (currentOrder?.finalPrice ?? currentOrder?.myQuote?.price ?? 0);
 
-      if (recoveredTripId) {
-        setActiveTripId(recoveredTripId);
-        if (detail?.tripStatus || detail?.trip?.status) {
-          setTripStatus(detail.tripStatus || detail.trip.status);
-        }
-      }
-
-      return recoveredTripId;
-    } catch (error) {
-      console.log('Recover trip id failed:', error);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    if (!activeOrderId) return;
-    fetchTripIdFromOrder();
-  }, [activeOrderId]);
-
-  const openNavigation = () => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup.lat},${order.pickup.lng}`;
-    Linking.openURL(url);
-  };
+  const orderNumber = isFoodOrder ? currentOrder?.orderNumber : null;
   const isCabOrder = currentOrder?.serviceType === 'CAB';
 
-  const TRIP_STATUS_FLOW = {
-    CREATED: 'START_RIDE',
-    START_RIDE: 'ARRIVED_AT_PICKUP',
-    ARRIVED_AT_PICKUP: 'LOAD_COLLECTED',
-    LOAD_COLLECTED: 'DELIVERY_STARTED',
-    DELIVERY_STARTED: 'DELIVERY_COMPLETED',
-  };
-
-  const handleOrderCancelled = async (data?: any) => {
-    const cancelKey = `${data?.orderId || order?._id || ''}:${
-      data?.tripId || order?.tripId || ''
-    }:${data?.cancelledBy || ''}`;
-
-    if (lastOrderCancelNoticeRef.current === cancelKey) return;
-    lastOrderCancelNoticeRef.current = cancelKey;
-
-    stopDriverLocationTracking();
-    await Storage.removeItem('tripId');
-
-    Toast.show({
-      type: 'error',
-      text1: data?.title || 'Order Cancelled',
-      text2:
-        data?.cancelledBy === 'CUSTOMER'
-          ? data?.reason || 'The customer has cancelled this order.'
-          : data?.reason || data?.message || 'This order has been cancelled.',
-    });
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Tabs', params: { screen: 'Home' } }],
-    });
-  };
-
-  // Load driverId once on mount
-  // useEffect(() => {
-  //   const loadDriverId = async () => {
-  //     const id = await AsyncStorage.getItem('driverId');
-  //     driverIdRef.current = id;
-  //   };
-  //   loadDriverId();
-  // }, []);
-
-  // JOIN_TRIP is already handled in RequestCard when accepting delivery
-  // No need to join again here
-
-  useEffect(() => {
-    if (!socket || !activeTripId) return;
-
-    socket.emit('JOIN_TRIP', {
-      tripId: activeTripId,
-      userId: user?._id,
-    });
-
-    socket.on('connect', () => {
-      console.log('Socket connected again');
-
-      socket.emit('JOIN_TRIP', {
-        tripId: activeTripId,
-        userId: user?._id,
-      });
-    });
-
-    socket.on('ORDER_CANCELLED', (data: any) => {
-      console.log('ORDER_CANCELLED received:', data);
-      handleOrderCancelled(data);
-    });
-
-    return () => {
-      socket.off('connect');
-      socket.off('ORDER_CANCELLED');
-    };
-  }, [activeTripId, socket, user?._id]);
-
-  useEffect(() => {
-    const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
-      const data: any = remoteMessage?.data || {};
-      if (data.type === 'ORDER_CANCELLED') {
-        handleOrderCancelled(data);
-      }
-    });
-
-    const unsubscribeBackground = messaging().onNotificationOpenedApp(
-      remoteMessage => {
-        const data: any = remoteMessage?.data || {};
-        if (data.type === 'ORDER_CANCELLED') {
-          handleOrderCancelled(data);
-        }
-      },
-    );
-
-    messaging()
-      .getInitialNotification()
-      .then(remoteMessage => {
-        const data: any = remoteMessage?.data || {};
-        if (data.type === 'ORDER_CANCELLED') {
-          handleOrderCancelled(data);
-        }
-      });
-
-    return () => {
-      unsubscribeForeground();
-      unsubscribeBackground();
-    };
-  }, []);
-
-  useEffect(() => {
-    tripStatusRef.current = tripStatus;
-  }, [tripStatus]);
-
-  const updateTripStatus = async () => {
-    console.log("laoidflsdhfshfdioh")
-    const nextStatus = TRIP_STATUS_FLOW[tripStatus];
-    const tripIdForRequest = activeTripId || (await fetchTripIdFromOrder());
-
-    if (!tripIdForRequest) {
-      Toast.show({
-        type: 'error',
-        text1: 'Trip ID missing',
-        text2: 'Please refresh the active ride and try again.',
-      });
-      return null;
-    }
-
-    if (!nextStatus) {
-      Toast.show({
-        type: 'info',
-        text1: 'Trip already completed',
-      });
-      return null;
-    }
-
-    try {
-      console.log(nextStatus, "nestatus")
-      const res = await fetch(`${BASE_URL}/user/trip/update-status`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
-        },
-
-        body: JSON.stringify({
-          tripId: tripIdForRequest,
-          status: nextStatus,
-        }),
-      });
-
-      const data = await res.json();
-      console.log('Update status response:', data);
-
-      if (data.success) {
-        const newStatus = data.data.status;
-        const now = new Date().toISOString();
-        setTripData(data)
-        setTripStatus(newStatus);
-        setStatusTimestamps(prev => ({ ...prev, [newStatus]: now }));
-
-        Toast.show({
-          type: 'success',
-          text1: `Status updated: ${newStatus.replace(/_/g, ' ')}`,
-        });
-
-        if (newStatus === 'DELIVERY_COMPLETED') {
-          stopDriverLocationTracking();
-          Storage.removeItem('tripId');
-          const updatedTimestamps = { ...statusTimestamps, [newStatus]: now };
-          const walletDeductAmount = data.data?.walletDeductAmount ?? 0;
-
-          const tripPayload = {
-            tripId: tripIdForRequest,
-            orderId: activeOrderId,
-            customerName: order?.customerId?.fullName || order?.sender?.name,
-            dropAddress: order?.drop?.address,
-            pickup: order.pickup,
-            drop: order.drop,
-            earning: order?.finalPrice ?? order?.myQuote?.price ?? 0,
-            orderAcceptedAt: order?.createdAt,
-            pickedUpAt: updatedTimestamps['LOAD_COLLECTED'],
-            arrivedAtDropAt: updatedTimestamps['DELIVERY_COMPLETED'],
-            totalDistance: routeDistance,
-            totalDuration: routeDuration,
-            walletDeductAmount,
-          };
-
-          if (user.driverType !== 'COMPANY') {
-            setTripData({ walletDeductAmount });
-            setCompleteModalVisible(true);
-          } else {
-            navigation.navigate('TripComplete', { trip: tripPayload });
-          }
-        }
-
-     
-        return newStatus;
-      }else{
-        Toast.show({
-        type: 'error',
-        text1: data.message,
-        })
-      }
-    } catch (error) {
-      console.log('Update status error:', error);
-      const err = error as any
-      Toast.show({
-        type: 'error',
-        text1: err.response.data.message,
-      });
-    }
-    return null;
-  };
-
-  const navigation = useNavigation<any>();
-
-  const messageCustomer = () => {
-    if (!activeTripId) {
-      Toast.show({
-        type: 'error',
-        text1: 'Trip not active yet',
-      });
-      return;
-    }
-
-    const tripId = activeTripId;
-    const customerId = order?.customerId?._id || order?.customerId;
-    const customerName = order?.customerId?.fullName || order?.sender?.name;
-    const customerPhoto =
-      order?.customerId?.portraitPhoto || order?.sender?.portraitPhoto;
-
-
-
-    navigation.navigate('ChatScreen', {
-      tripId,
-      otherUserId: customerId,
-      otherUserName: customerName,
-      otherUserPhoto: customerPhoto,
-      role: 'DRIVER',
-    });
-  };
   const getButtonText = () => {
-    switch (tripStatus) {
-      case 'CREATED':
-        return 'Start Ride';
-      case 'START_RIDE':
-        return 'Arrived at Pickup';
-      case 'ARRIVED_AT_PICKUP':
-        return isCabOrder ? 'Passenger Boarded' : 'Load Collected';
-      case 'LOAD_COLLECTED':
-        return 'Start Delivery';
-      case 'DELIVERY_STARTED':
-        return isCabOrder ? 'Complete Ride' : 'Complete Delivery';
-      default:
-        return 'Trip Completed';
+    if (isFoodOrder) {
+      if (foodOrderStatus === 'ready') return 'Picked Up Order';
+      if (foodOrderStatus === 'out_for_delivery') return 'Mark Delivered';
+      return 'Order Completed';
     }
+    const map: Record<string, string> = {
+      CREATED: 'Start Ride',
+      START_RIDE: 'Arrived at Pickup',
+      ARRIVED_AT_PICKUP: isCabOrder ? 'Passenger Boarded' : 'Load Collected',
+      LOAD_COLLECTED: 'Start Delivery',
+      DELIVERY_STARTED: isCabOrder ? 'Complete Ride' : 'Complete Delivery',
+    };
+    return map[tripStatus] || 'Trip Completed';
   };
 
-  const StackedLocationMarker = ({ type }: { type: MarkerType }) => {
-    if (type === 'RECEIVER') {
-      return (
-        <View style={styles.receiverMarker}>
-          <ReceiverIcon />
-        </View>
-      );
-    }
+  // ── Sync tripStatusRef ─────────────────────────────────────────────────────
+  useEffect(() => { tripStatusRef.current = tripStatus; }, [tripStatus]);
 
-    return (
-      <View>
-        <BottomBG1 />
-        {/* <BottomBG2 />
-        <Location /> */}
-      </View>
-    );
-  };
-  // useEffect(() => {
-  //   const fetchTripStatus = async () => {
-  //     try {
-  //       const res = await fetch(`${BASE_URL}/user/trip/${order.tripId}`, {
-  //         headers: {
-  //           Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
-  //         },
-  //       });
-
-  //       const data = await res.json();
-
-  //       if (data.success) {
-  //         setTripStatus(data.trip.tripStatus);
-  //       }
-  //     } catch (error) {
-  //       console.log('Trip status fetch error:', error);
-  //     }
-  //   };
-
-  //   if (order?.tripId) {
-  //     fetchTripStatus();
-  //   }
-  // }, []);
-  // 5. Also update compass to use the same rotation animation
+  // ── Sync foodOrderStatus → tripStatusRef so fetchRoute uses correct phase ──
   useEffect(() => {
-    CompassHeading.start(3, ({ heading }) => {
-      let diff = heading - lastHeadingRef.current;
+    if (!isFoodOrder) return;
+    // Map food order status to a key fetchRoute understands
+    tripStatusRef.current = foodOrderStatus === 'out_for_delivery' ? 'DELIVERY_STARTED' : 'ready';
+  }, [foodOrderStatus, isFoodOrder]);
 
-      if (diff > 180) diff -= 360;
-      if (diff < -180) diff += 360;
-
-      const newHeading = lastHeadingRef.current + diff;
-
-      lastHeadingRef.current = newHeading;
-      setCurrentHeading(newHeading);
-    });
-
-    return () => CompassHeading.stop();
-  }, []);
-
-  // Check if ride should be started based on trip status
+  // ── Active statuses → rideStarted ─────────────────────────────────────────
   useEffect(() => {
-    const activeStatuses = [
-      'START_RIDE',
-      'ARRIVED_AT_PICKUP',
-      'LOAD_COLLECTED',
-      'DELIVERY_STARTED',
-    ];
-
-    if (activeStatuses.includes(tripStatus)) {
+    if (['START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED', 'DELIVERY_STARTED'].includes(tripStatus)) {
       setRideStarted(true);
     }
   }, [tripStatus]);
 
-const openGoogleNavigation = async (status?: string) => {
-  const currentStatus = status ?? tripStatus;
+  // food order: rideStarted = true always (driver already accepted)
+  useEffect(() => {
+    if (isFoodOrder) setRideStarted(true);
+  }, [isFoodOrder]);
 
-  let lat;
-  let lng;
-
-  if (
-    currentStatus === 'CREATED' ||
-    currentStatus === 'START_RIDE' ||
-    currentStatus === 'ARRIVED_AT_PICKUP' ||
-    currentStatus === 'LOAD_COLLECTED'
-  ) {
-    lat = order.pickup.lat;
-    lng = order.pickup.lng;
-  } else if (currentStatus === 'DELIVERY_STARTED') {
-    lat = order.drop.lat;
-    lng = order.drop.lng;
-  }
-
-  const googleMapsUrl = Platform.select({
-    ios: `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`,
-    android: `google.navigation:q=${lat},${lng}&mode=d`,
-  });
-
-  const appleMapsUrl = `http://maps.apple.com/?daddr=${lat},${lng}`;
-
-  try {
-    const supported = await Linking.canOpenURL(googleMapsUrl!);
-
-    if (supported) {
-      await Linking.openURL(googleMapsUrl!);
-    } else {
-      // fallback to Apple Maps on iOS
-      await Linking.openURL(appleMapsUrl);
-    }
-  } catch (error) {
-    console.log('Navigation error:', error);
-
-    Toast.show({
-      type: 'error',
-      text1: 'Unable to open navigation',
+  // ── Compass ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    CompassHeading.start(3, ({ heading }) => {
+      let diff = heading - lastHeadingRef.current;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      lastHeadingRef.current += diff;
+      setCurrentHeading(lastHeadingRef.current);
     });
-  }
-};
-  // Unified interval for location updates
-  useEffect(() => {
-    let interval: any;
-    let routeInterval: any;
-
-    if (activeTripId) {
-      startDriverLocationTracking(activeTripId, user?._id || null, socket);
-
-      interval = setInterval(async () => {
-        const location = await getCurrentLocation();
-        if (!location) return;
-
-        const driver = { latitude: location.lat, longitude: location.long };
-        console.log(
-          '🚚 DRIVER LOCATION EMIT:',
-          activeTripId,
-          user?._id,
-          location.lat,
-          location.long,
-        );
-
-        // Emit socket event with validation
-        if (socket?.connected && user?._id) {
-          socket.emit('DRIVER_LOCATION_UPDATE', {
-            tripId: activeTripId,
-            driverId: user._id,
-            lat: location.lat,
-            lng: location.long,
-          });
-        }
-
-        // Smooth coordinate animation
-        (coordinate as any)
-          .timing({
-            latitude: driver.latitude,
-            longitude: driver.longitude,
-            duration: 1500,
-            useNativeDriver: false,
-          })
-          .start();
-
-        setDriverLocation(driver);
-
-        // Update heading from GPS when available
-        if (
-          location.heading !== null &&
-          location.heading !== undefined &&
-          location.heading >= 0
-        ) {
-          lastHeadingRef.current = location.heading;
-          setCurrentHeading(location.heading);
-        }
-
-        // Camera follow
-        mapRef.current?.animateCamera(
-          {
-            center: driver,
-            heading: location.heading || 0,
-            pitch: 45,
-            zoom: 17,
-          },
-          { duration: 1500 },
-        );
-
-        if (rideStarted) {
-          checkNavigationStep(driver);
-        }
-      }, 2000);
-
-      // Route refresh separately - less frequent
-      routeInterval = setInterval(async () => {
-        const location = await getCurrentLocation();
-        if (!location) return;
-        fetchRoute({ latitude: location.lat, longitude: location.long });
-      }, 8000);
-
-      return () => {
-        clearInterval(interval);
-        clearInterval(routeInterval);
-        stopDriverLocationTracking();
-      };
-    }
-  }, [activeTripId, rideStarted, socket, user?._id]);
-
-  const getDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  };
-  const checkNavigationStep = driver => {
-    if (!steps.length) return;
-
-    const next = steps[0];
-
-    const distance = getDistance(
-      driver.latitude,
-      driver.longitude,
-      next.end_location.lat,
-      next.end_location.lng,
-    );
-
-    if (distance < 30) {
-      const remaining = steps.slice(1);
-      setSteps(remaining);
-      setCurrentStep(remaining[0]);
-    }
-  };
-
-  useEffect(() => {
-    if (rideStarted && driverLocation) {
-      fetchRoute(driverLocation);
-    }
-  }, [rideStarted]);
-
-  useEffect(() => {
-    const loadDriverLocation = async () => {
-      try {
-        const location = await getCurrentLocation();
-
-        if (location) {
-          console.log('Driver location from util:', location);
-          setDriverLocation({
-            latitude: location.lat,
-            longitude: location.long,
-          });
-
-          coordinate.setValue({
-            latitude: location.lat,
-            longitude: location.long,
-            latitudeDelta: 0,
-            longitudeDelta: 0,
-          });
-        }
-      } catch (error) {
-        console.log('Location error:', error);
-      }
-    };
-
-    loadDriverLocation();
+    return () => CompassHeading.stop();
   }, []);
 
-  const callCustomer = () => {
-    const phone =
-      tripStatus === 'DELIVERY_STARTED'
-        ? order?.receiver?.phone
-        : order?.sender?.phone;
-    if (phone) {
-      Linking.openURL(`tel:${phone}`);
+  // ── Initial driver location ────────────────────────────────────────────────
+  useEffect(() => {
+    getCurrentLocation().then(loc => {
+      if (!loc) return;
+      const pos = { latitude: loc.lat, longitude: loc.long };
+      setDriverLocation(pos);
+      coordinate.setValue({ ...pos, latitudeDelta: 0, longitudeDelta: 0 });
+      fetchRoute(pos);
+    });
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Fetch trip id from order ───────────────────────────────────────────────
+  const fetchTripIdFromOrder = useCallback(async () => {
+    if (!activeOrderId) return null;
+    try {
+      const endpoint = isFoodOrder ? `/driver/food-orders/${activeOrderId}` : `/driver/food-orders/${activeOrderId}`;
+      const res = await api.get(endpoint);
+      const detail = res?.data?.data?.order ?? res?.data?.data ?? res?.data;
+      if (detail) {
+        setOrderDetails((prev: any) => ({ ...(prev || {}), ...detail }));
+        if (isFoodOrder && detail.orderStatus) setFoodOrderStatus(detail.orderStatus);
+      }
+      const tripId = normalizeId(detail?.tripId || detail?.trip?._id || detail?.trip);
+      if (tripId) {
+        setActiveTripId(tripId);
+        const status = detail?.tripStatus || detail?.trip?.status;
+        if (status) setTripStatus(status);
+      }
+      return tripId;
+    } catch { return null; }
+  }, [activeOrderId, isFoodOrder]);
+
+  useEffect(() => { fetchTripIdFromOrder(); }, [fetchTripIdFromOrder]);
+
+  // ── Order cancelled handler ────────────────────────────────────────────────
+  const handleOrderCancelled = useCallback(async (data?: any) => {
+    const key = `${data?.orderId || order?._id}:${data?.tripId || order?.tripId}:${data?.cancelledBy}`;
+    if (lastCancelKeyRef.current === key) return;
+    lastCancelKeyRef.current = key;
+    stopDriverLocationTracking();
+    await Storage.removeItem('tripId');
+    Toast.show({ type: 'error', text1: data?.title || 'Order Cancelled', text2: data?.reason || 'This order has been cancelled.' });
+    navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Home' } }] });
+  }, [navigation, order]);
+
+  // ── Socket ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!socket || !activeTripId) return;
+    socket.emit('JOIN_TRIP', { tripId: activeTripId, userId: user?._id });
+    const onConnect = () => socket.emit('JOIN_TRIP', { tripId: activeTripId, userId: user?._id });
+    const onCancelled = (data: any) => handleOrderCancelled(data);
+    socket.on('connect', onConnect);
+    socket.on('ORDER_CANCELLED', onCancelled);
+    return () => { socket.off('connect', onConnect); socket.off('ORDER_CANCELLED', onCancelled); };
+  }, [activeTripId, socket, user?._id, handleOrderCancelled]);
+
+  // ── FCM ────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const unsub1 = messaging().onMessage(async msg => {
+      if (msg?.data?.type === 'ORDER_CANCELLED') handleOrderCancelled(msg.data);
+    });
+    const unsub2 = messaging().onNotificationOpenedApp(msg => {
+      if (msg?.data?.type === 'ORDER_CANCELLED') handleOrderCancelled(msg.data);
+    });
+    messaging().getInitialNotification().then(msg => {
+      if (msg?.data?.type === 'ORDER_CANCELLED') handleOrderCancelled(msg.data);
+    });
+    return () => { unsub1(); unsub2(); };
+  }, [handleOrderCancelled]);
+
+  // ── Fetch route ────────────────────────────────────────────────────────────
+  const fetchRoute = useCallback(async (origin?: { latitude: number; longitude: number }) => {
+    const loc = origin || driverLocation;
+    if (!loc?.latitude || !loc?.longitude) return;
+
+    // Food order: before DELIVERY_STARTED → driver→restaurant, after → restaurant→drop
+    let destLat: number | undefined;
+    let destLng: number | undefined;
+
+    if (isFoodOrder) {
+      if (tripStatusRef.current === 'DELIVERY_STARTED') {
+        destLat = drop?.lat;
+        destLng = drop?.lng;
+      } else {
+        destLat = pickup?.lat;
+        destLng = pickup?.lng;
+      }
     } else {
-      Toast.show({
-        type: 'error',
-        text1: 'Phone number not available',
-      });
-    }
-  };
-  const decodePolyline = (encoded: string) => {
-    let points = [];
-    let index = 0,
-      lat = 0,
-      lng = 0;
-
-    while (index < encoded.length) {
-      let b,
-        shift = 0,
-        result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      let dlat = result & 1 ? ~(result >> 1) : result >> 1;
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      let dlng = result & 1 ? ~(result >> 1) : result >> 1;
-      lng += dlng;
-
-      points.push({
-        latitude: lat / 1e5,
-        longitude: lng / 1e5,
-      });
+      const goToPickup = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+      if (goToPickup.includes(tripStatusRef.current)) {
+        destLat = pickup?.lat;
+        destLng = pickup?.lng;
+      } else {
+        destLat = drop?.lat;
+        destLng = drop?.lng;
+      }
     }
 
-    return points;
-  };
-
-  console.log('Pickup:', order.pickup);
-  console.log('Driver:', driverLocation);
-
-  // const fetchRoute = async (driver?: any) => {
-  //   const origin = driver || driverLocation;
-
-  //   if (!origin?.latitude || !origin?.longitude) {
-  //     console.log('Driver location not available yet');
-  //     return;
-  //   }
-
-  //   try {
-  //     let destination;
-
-  //     if (tripStatus === 'CREATED' || tripStatus === 'START_RIDE') {
-  //       destination = `${order.pickup.lat},${order.pickup.lng}`;
-  //     } else {
-  //       destination = `${order.drop.lat},${order.drop.lng}`;
-  //     }
-
-  //     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination}&key=AIzaSyAEGcqEOyWEexZg3ArMIHw9rsAhnb1l3N4`;
-
-  //     const res = await fetch(url);
-  //     const json = await res.json();
-  //     console.log('Directions API response:', json);
-
-  //     if (!json?.routes?.length) return;
-
-  //     const polyline = json.routes[0].overview_polyline.points;
-
-  //     const points = decodePolyline(polyline);
-
-  //     setRouteCoords(points);
-  //     setTimeout(() => {
-  //       mapRef.current?.fitToCoordinates(points, {
-  //         edgePadding: { top: 100, right: 50, bottom: 120, left: 50 },
-  //         animated: true,
-  //       });
-  //     }, 300);
-  //   } catch (e) {
-  //     console.log('Route error:', e);
-  //   }
-  // };
-  // 1. Fix destination logic in fetchRoute — use tripStatusRef
-  const fetchRoute = async (driver?: any) => {
-    const origin = driver || driverLocation;
-    if (!origin?.latitude || !origin?.longitude) return;
+    if (!destLat || !destLng) return;
 
     try {
-      let destination;
-
-      // Driver → Pickup for these statuses
-      const goToPickup = [
-        'CREATED',
-        'START_RIDE',
-        'ARRIVED_AT_PICKUP',
-        'LOAD_COLLECTED',
-      ];
-
-      if (goToPickup.includes(tripStatusRef.current)) {
-        destination = `${order.pickup.lat},${order.pickup.lng}`;
-      } else {
-        // DELIVERY_STARTED → Drop
-        destination = `${order.drop.lat},${order.drop.lng}`;
-      }
-
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination}&mode=driving&key=AIzaSyAEGcqEOyWEexZg3ArMIHw9rsAhnb1l3N4`;
-
-      const res = await fetch(url);
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${loc.latitude},${loc.longitude}&destination=${destLat},${destLng}&mode=driving&key=AIzaSyAEGcqEOyWEexZg3ArMIHw9rsAhnb1l3N4`,
+      );
       const json = await res.json();
       if (!json.routes?.length) return;
-
-      const route = json.routes[0];
-      const points = decodePolyline(route.overview_polyline.points);
-      setRouteCoords(points);
-
-      const leg = route.legs[0];
+      const leg = json.routes[0].legs[0];
+      setRouteCoords(decodePolyline(json.routes[0].overview_polyline.points));
       setRouteDistance(leg.distance.text);
       setRouteDuration(leg.duration.text);
       setSteps(leg.steps);
-      setCurrentStep(leg.steps[0]);
-    } catch (e) {
-      console.log('Route error:', e);
+    } catch {}
+  }, [driverLocation, pickup, drop, isFoodOrder]);
+
+  // ── Location tracking interval ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeTripId) return;
+    startDriverLocationTracking(activeTripId, user?._id || null, socket);
+
+    const locInterval = setInterval(async () => {
+      const loc = await getCurrentLocation();
+      if (!loc) return;
+      const pos = { latitude: loc.lat, longitude: loc.long };
+
+      if (socket?.connected && user?._id) {
+        socket.emit('DRIVER_LOCATION_UPDATE', { tripId: activeTripId, driverId: user._id, lat: loc.lat, lng: loc.long });
+      }
+
+      (coordinate as any).timing({ ...pos, duration: 1500, useNativeDriver: false }).start();
+      setDriverLocation(pos);
+
+      if (loc.heading !== null && loc.heading !== undefined && loc.heading >= 0) {
+        lastHeadingRef.current = loc.heading;
+        setCurrentHeading(loc.heading);
+      }
+
+      mapRef.current?.animateCamera({ center: pos, heading: loc.heading || 0, pitch: 45, zoom: 17 }, { duration: 1500 });
+    }, 2000);
+
+    const routeInterval = setInterval(async () => {
+      const loc = await getCurrentLocation();
+      if (loc) fetchRoute({ latitude: loc.lat, longitude: loc.long });
+    }, 8000);
+
+    return () => { clearInterval(locInterval); clearInterval(routeInterval); stopDriverLocationTracking(); };
+  }, [activeTripId, socket, user?._id, fetchRoute]);
+
+  // ── Update food order status (PICKED_UP / DELIVERED) ─────────────────────
+  const updateFoodOrderStatus = async () => {
+    if (!activeOrderId) return;
+    const nextStatus = foodOrderStatus === 'ready' ? 'PICKED_UP' : foodOrderStatus === 'out_for_delivery' ? 'DELIVERED' : null;
+    if (!nextStatus) { Toast.show({ type: 'info', text1: 'Order already completed' }); return; }
+    try {
+      const res: any = await updateFoodStatus(activeOrderId, nextStatus as 'PICKED_UP' | 'DELIVERED');
+      const updatedOrder = res?.data?.data?.order ?? res?.data?.order ?? res?.data;
+      const newOrderStatus = updatedOrder?.orderStatus ?? (nextStatus === 'PICKED_UP' ? 'out_for_delivery' : 'delivered');
+      setFoodOrderStatus(newOrderStatus);
+      if (updatedOrder) setOrderDetails((prev: any) => ({ ...(prev || {}), ...updatedOrder }));
+      Toast.show({ type: 'success', text1: nextStatus === 'PICKED_UP' ? 'Order Picked Up! Heading to customer.' : 'Order Delivered! 🎉' });
+      if (nextStatus === 'PICKED_UP') {
+        // route switch: restaurant → delivery address
+        tripStatusRef.current = 'DELIVERY_STARTED';
+        fetchRoute();
+      }
+      if (nextStatus === 'DELIVERED') {
+        stopDriverLocationTracking();
+        Storage.removeItem('tripId');
+        navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Home' } }] });
+      }
+    } catch {
+      Toast.show({ type: 'error', text1: 'Failed to update order status' });
     }
   };
-  useEffect(() => {
-    console.log('Updated routeCoords:', routeCoords.length);
-  }, [routeCoords]);
 
-  useEffect(() => {
-    if (navigationMode && driverLocation && routeCoords.length === 0) {
-      fetchRoute();
+  // ── Update trip status ─────────────────────────────────────────────────────
+  const updateTripStatus = async () => {
+    const nextStatus = TRIP_STATUS_FLOW[tripStatus];
+    const tripId = activeTripId || (await fetchTripIdFromOrder());
+    if (!tripId) { Toast.show({ type: 'error', text1: 'Trip ID missing' }); return null; }
+    if (!nextStatus) { Toast.show({ type: 'info', text1: 'Trip already completed' }); return null; }
+
+    try {
+      const res = await fetch(`${BASE_URL}/user/trip/update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await AsyncStorage.getItem('token')}` },
+        body: JSON.stringify({ tripId, status: nextStatus }),
+      });
+      const data = await res.json();
+      if (!data.success) { Toast.show({ type: 'error', text1: data.message }); return null; }
+
+      const now = new Date().toISOString();
+      setTripStatus(data.data.status);
+      setTripData(data);
+      setStatusTimestamps(prev => ({ ...prev, [data.data.status]: now }));
+      Toast.show({ type: 'success', text1: `Status: ${data.data.status.replace(/_/g, ' ')}` });
+
+      if (data.data.status === 'DELIVERY_COMPLETED') {
+        stopDriverLocationTracking();
+        Storage.removeItem('tripId');
+        const timestamps = { ...statusTimestamps, [data.data.status]: now };
+        const tripPayload = {
+          tripId, orderId: activeOrderId,
+          customerName: order?.customerId?.fullName || order?.sender?.name,
+          dropAddress: order?.drop?.address,
+          pickup: order.pickup, drop: order.drop,
+          earning: order?.finalPrice ?? order?.myQuote?.price ?? 0,
+          orderAcceptedAt: order?.createdAt,
+          pickedUpAt: timestamps['LOAD_COLLECTED'],
+          arrivedAtDropAt: timestamps['DELIVERY_COMPLETED'],
+          totalDistance: routeDistance, totalDuration: routeDuration,
+          walletDeductAmount: data.data?.walletDeductAmount ?? 0,
+        };
+        if (user.driverType !== 'COMPANY') {
+          setTripData({ walletDeductAmount: data.data?.walletDeductAmount ?? 0 });
+          setCompleteModalVisible(true);
+        } else {
+          navigation.navigate('TripComplete', { trip: tripPayload });
+        }
+      }
+      return data.data.status;
+    } catch (e: any) {
+      Toast.show({ type: 'error', text1: e?.response?.data?.message || 'Failed to update status' });
+      return null;
     }
-  }, [navigationMode, driverLocation]);
+  };
 
+  // ── Status button press ────────────────────────────────────────────────────
+  const handleStatusPress = async () => {
+    const granted = await requestLocationPermission();
+    if (!granted) {
+      Alert.alert('Location Required', 'Enable location permission to continue.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Settings', onPress: () => Linking.openSettings() },
+      ]);
+      return;
+    }
+    if (isFoodOrder) { await updateFoodOrderStatus(); return; }
+    const newStatus = await updateTripStatus();
+    if (newStatus === 'START_RIDE') { setRideStarted(true); fetchRoute(); }
+    if (newStatus === 'DELIVERY_STARTED') { fetchRoute(); }
+  };
+
+  // ── Cancel order ───────────────────────────────────────────────────────────
+  const handleCancelConfirm = async (reason: string) => {
+    setCancelModalVisible(false);
+    setPendingCancelReason(reason);
+    setTimeout(() => setCancelAlertVisible(true), 200);
+  };
+
+  const submitCancel = async () => {
+    setCancelAlertVisible(false);
+    if (!activeOrderId) return;
+    try {
+      if (isFoodOrder) {
+        await cancelFoodOrder(activeOrderId, pendingCancelReason);
+        Toast.show({ type: 'success', text1: 'Order cancelled' });
+        stopDriverLocationTracking();
+        navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Home' } }] });
+        return;
+      }
+      const res = await fetch(`${BASE_URL}/user/order/order-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await AsyncStorage.getItem('token')}` },
+        body: JSON.stringify({ orderId: activeOrderId, reason: pendingCancelReason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        Toast.show({ type: 'success', text1: 'Order cancelled' });
+        navigation.goBack();
+      } else {
+        Toast.show({ type: 'error', text1: data.message || 'Failed to cancel' });
+      }
+    } catch {
+      Toast.show({ type: 'error', text1: 'Failed to cancel order' });
+    }
+  };
+
+  // ── Navigate ───────────────────────────────────────────────────────────────
+  const openGoogleNavigation = async () => {
+    const goToPickup = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+    const dest = goToPickup.includes(tripStatus) ? pickup : drop;
+    const lat = dest?.lat, lng = dest?.lng;
+    if (!lat || !lng) return;
+    const googleUrl = Platform.select({
+      ios: `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`,
+      android: `google.navigation:q=${lat},${lng}&mode=d`,
+    })!;
+    const supported = await Linking.canOpenURL(googleUrl);
+    Linking.openURL(supported ? googleUrl : `http://maps.apple.com/?daddr=${lat},${lng}`);
+  };
+
+  // ── Call ───────────────────────────────────────────────────────────────────
+  const callCustomer = () => {
+    if (customerPhone) Linking.openURL(`tel:${customerPhone}`);
+    else Toast.show({ type: 'error', text1: 'Phone number not available' });
+  };
+
+  // ── Chat ───────────────────────────────────────────────────────────────────
+  const openChat = () => {
+    if (!activeTripId) { Toast.show({ type: 'error', text1: 'Trip not active yet' }); return; }
+    navigation.navigate('ChatScreen', {
+      tripId: activeTripId,
+      otherUserId: currentOrder?.userAuthId?._id ?? currentOrder?.customerId?._id ?? currentOrder?.customerId,
+      otherUserName: customerName,
+      otherUserPhoto: currentOrder?.customerId?.portraitPhoto,
+      role: 'DRIVER',
+    });
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      {navigationMode && (
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => {
-            setNavigationMode(false);
-            setRouteCoords([]);
-          }}
-        >
-          <Text style={styles.backBtnText}>← Back</Text>
+      {/* Map — full screen */}
+      <RideMap
+        mapRef={mapRef}
+        coordinate={coordinate}
+        driverLocation={driverLocation}
+        pickup={pickup}
+        drop={drop}
+        routeCoords={routeCoords}
+        currentHeading={currentHeading}
+        rideStarted={rideStarted}
+        isFoodOrder={isFoodOrder}
+        tripStatus={tripStatus}
+        style={showSheet ? styles.mapPartial : styles.mapFull}
+      />
+
+      {/* Show Details pill when sheet is hidden */}
+      {!showSheet && (
+        <TouchableOpacity style={styles.showDetailsBtn} onPress={() => setShowSheet(true)}>
+          <Text style={styles.showDetailsBtnText}>Show Details</Text>
         </TouchableOpacity>
       )}
-      {/* ---------- MAP ---------- */}
-      {currentStep && navigationMode && (
-        <View style={styles.navigationBox}>
-          <Text style={styles.navText}>
-            {currentStep.html_instructions.replace(/<[^>]*>?/gm, '')}
-          </Text>
 
-          <Text style={styles.navDistance}>{currentStep.distance.text}</Text>
-        </View>
-      )}
-      <MapView
-        ref={mapRef}
-        style={[
-          styles.map,
-          navigationMode && { height: '100%' },
-          !navigationMode && !showContent && { height: '100%' },
-        ]}
-          onPress={() => {
-    if (!navigationMode && showContent) {
-      setShowContent(false);
-    }
-  }}
-        initialRegion={{
-          latitude: driverLocation?.latitude || order.pickup.lat,
-          longitude: driverLocation?.longitude || order.pickup.lng,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-      >
-        {/* Pickup Marker */}
-        {/* Pickup Marker */}
-        {!rideStarted && (
-          <Marker
-            coordinate={{
-              latitude: order.pickup.lat,
-              longitude: order.pickup.lng,
-            }}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <StackedLocationMarker type="SENDER" />
-          </Marker>
-        )}
-        {/* Drop Marker */}
-        <Marker
-          coordinate={{
-            latitude: order.drop.lat,
-            longitude: order.drop.lng,
-          }}
-          anchor={{ x: 0.5, y: 0.5 }}
-          tracksViewChanges={true}
-        >
-          <StackedLocationMarker type="RECEIVER" />
-        </Marker>
-        {/* Route Line */}
-        {routeCoords.length > 0 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeWidth={6}
-            strokeColor="blue"
+      {/* Bottom sheet */}
+      {showSheet && (
+        <View style={styles.sheet}>
+          {/* Drag handle + hide */}
+          <TouchableOpacity style={styles.handleWrap} onPress={() => setShowSheet(false)}>
+            <View style={styles.handle} />
+          </TouchableOpacity>
+
+          <TripInfoSheet
+            pickup={pickup || {}}
+            drop={drop || {}}
+            orderTitle={orderTitle}
+            orderInstruction={orderInstruction}
+            orderNumber={orderNumber}
+            customerName={customerName}
+            earning={earning}
+            tripStatus={tripStatus}
+            isFoodOrder={isFoodOrder}
+            foodOrderStatus={foodOrderStatus}
+            buttonText={getButtonText()}
+            isCancellable={isFoodOrder ? foodOrderStatus === 'ready' : CANCELLABLE_STATUSES.includes(tripStatus)}
+            onStatusPress={handleStatusPress}
+            onCancel={() => setCancelModalVisible(true)}
+            onChat={openChat}
+            onCall={callCustomer}
+            onNavigate={openGoogleNavigation}
           />
-        )}
-        {driverLocation && (
-          <Marker.Animated
-            coordinate={coordinate as any}
-            flat
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={true}
-          >
-            <Image
-              source={require('../assets/images/navigate.png')}
-              style={{
-                width: 40,
-                height: 40,
-                resizeMode: 'contain',
-                transform: [{ rotate: `${currentHeading - 90}deg` }],
-              }}
-            />
-          </Marker.Animated>
-        )}
-      </MapView>
-      {navigationMode && (
-        <TouchableOpacity
-          style={styles.startRideBtn}
-          onPress={async () => {
-            await updateTripStatus();
-          }}
-        >
-          <Text style={styles.startText}>{getButtonText()}</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* ---------- CONTENT ---------- */}
-      {!navigationMode && showContent && (
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={{ paddingBottom: scale(40) }}
-          showsVerticalScrollIndicator={false}
-            {...tripDetailsPanResponder.panHandlers}
-        >
-          <View style={styles.content}>
-            {/* Pickup */}
-            <TouchableOpacity
-  style={styles.hideModalBtn}
-  onPress={() => setShowContent(false)}
->
-  <Text style={styles.hideModalBtnText}>Hide</Text>
-</TouchableOpacity>
-            <View style={styles.locationCard}>
-              <View style={styles.rowBetween}>
-                <View style={[styles.row, { flex: 1 }]}>
-                  <BlueLocation />
-                  <View style={{ marginLeft: scale(10), flex: 1 }}>
-                    <Text style={styles.label}>Pickup</Text>
-                    <Text style={styles.address}>
-                      {currentOrder?.pickup?.address || 'Pickup address not available'}
-                    </Text>
-                  </View>
-                </View>
-                {!!currentOrder?.pickup?.time && (
-                  <Text style={styles.time}>{currentOrder.pickup.time}</Text>
-                )}
-              </View>
-
-              <View style={styles.actionRow}>
-                 {/* <View style={styles.actionIcons}> */}
-                     <TouchableOpacity
-                 style={[styles.navigateBtn,{
-                  gap: scale(5),
-                  alignItems:"center"
-                 }]}
-                    onPress={messageCustomer}
-                  >
-                    {/* <MessageSvg 
-                    color={'white'}
-                    height={40} width={40}
-                    /> */}
-                    <Text style={styles.navigateText}> Chat</Text>
-                    <ChatSvgCode/>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.callBtn}
-                    onPress={callCustomer}
-                  >
-                    <CallSvg  
-                    // height={30} width={30} 
-                    />
-                  </TouchableOpacity>
-
-                {/* </View> */}
-                <TouchableOpacity
-                  style={[styles.callBtn ,{
-                    transform: [{ rotate: '35deg' }],
-                  }]}
-                  onPress={async () => {
-                    const granted = await requestLocationPermission();
-                    if (!granted) {
-                      Alert.alert(
-                        'Location Permission Required',
-                        'Please enable location permission from settings to use navigation.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                        ],
-                      );
-                      return;
-                    }
-
-                    // setNavigationMode(true);
-                    await fetchRoute();
-                    await openGoogleNavigation()
-                  }}
-                >
-                  {/* <NavigateSvg  color={'red'}/> */}
-                  <NavigateSvgCode height={30} width={20} />
-                  {/* <Text style={styles.navigateText}> Navigate</Text> */}
-                </TouchableOpacity>
-
-               
-              </View>
-
-              {/* Delivery */}
-              <View style={[styles.row, { marginTop: scale(15) }]}>
-                <RedLocation />
-                <View style={{ marginLeft: scale(10) }}>
-                  <Text style={styles.label}>Delivery</Text>
-                  <Text style={styles.address}>
-                    {currentOrder?.drop?.address || 'Delivery address not available'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Trip Details */}
-            <Text style={styles.sectionTitle}>Trip Details</Text>
-
-            <View style={styles.detailCard}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailTitle}>Order</Text>
-                <Text style={styles.detailSubtitle}>{orderTitle}</Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailTitle}>Instruction</Text>
-                <Text style={styles.detailSubtitle}>{orderInstruction}</Text>
-              </View>
-            </View>
-
-            {/* Earnings */}
-            <View style={styles.earningCard}>
-              <Text style={styles.earningLabel}>Earning</Text>
-              <Text style={styles.earningAmount}>
-                ${order.finalPrice ?? order.myQuote?.price ?? 0}
-              </Text>
-            </View>
-
-            {/* Start Ride */}
-            {!navigationMode && (
-              <View style={styles.btnRow}>
-                <TouchableOpacity
-                  style={styles.startBtn}
-                  onPress={async () => {
-                    try {
-                      const tripIdForAction =
-                        activeTripId || (await fetchTripIdFromOrder());
-
-                      if (!tripIdForAction) {
-                        Toast.show({
-                          type: 'error',
-                          text1: 'Trip ID missing',
-                          text2: 'Please refresh the active ride and try again.',
-                        });
-                        return;
-                      }
-
-                      if (!order?.pickup?.lat || !order?.drop?.lat) {
-                        Toast.show({
-                          type: 'error',
-                          text1: 'Location data missing',
-                        });
-                        return;
-                      }
-
-                      const granted = await requestLocationPermission();
-                      if (!granted) {
-                        Alert.alert(
-                          'Location Permission Required',
-                          'Please enable location permission from settings to start the ride.',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                          ],
-                        );
-                        return;
-                      }
-
-                      const newStatus = await updateTripStatus();
-
-                      if (!newStatus) return;
-
-                      if (newStatus === 'START_RIDE') {
-                        setRideStarted(true);
-                        // setNavigationMode(true);
-                        await fetchRoute();
-                      }
-
-                      if (newStatus === 'DELIVERY_STARTED') {
-                        setNavigationMode(true);
-                        await fetchRoute();
-                      }
-                    } catch (error) {
-                      console.log('Start ride error:', error);
-                      Toast.show({
-                        type: 'error',
-                        text1: 'Failed to start ride',
-                      });
-                    }
-                  }}
-                >
-                  <Text style={styles.startText}>{getButtonText()}</Text>
-                </TouchableOpacity>
-                {!['LOAD_COLLECTED', 'DELIVERY_STARTED'].includes(
-                  tripStatus,
-                ) && (
-                  <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => setCancelReasonModalVisible(true)}
-                  >
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                )}
-
-                <CustomAlert
-                  visible={cancelAlertVisible}
-                  title="Cancel Trip"
-                  message="Are you sure you want to cancel this trip?"
-                  onDismiss={() => setCancelAlertVisible(false)}
-                  buttons={[
-                    {
-                      text: 'No',
-                      style: 'cancel',
-                      onPress: () => setCancelAlertVisible(false),
-                    },
-                    {
-                      text: 'Yes, Cancel',
-                      style: 'destructive',
-                      onPress: async () => {
-                        setCancelAlertVisible(false);
-                        if (!activeOrderId) {
-                          Toast.show({
-                            type: 'error',
-                            text1: 'Order ID missing',
-                            text2: 'Please refresh the active ride and try again.',
-                          });
-                          return;
-                        }
-                        try {
-                          const res = await fetch(
-                            `${BASE_URL}/user/order/order-cancel`,
-                            {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${await AsyncStorage.getItem(
-                                  'token',
-                                )}`,
-                              },
-                              body: JSON.stringify({
-                                orderId: activeOrderId,
-                                reason:
-                                  selectedReason === 'Other'
-                                    ? customReason
-                                    : selectedReason,
-                              }),
-                            },
-                          );
-                          const data = await res.json();
-                          if (data.success) {
-                            Toast.show({
-                              type: 'success',
-                              text1: 'Order cancelled successfully',
-                            });
-                            setSelectedReason(null);
-                            navigation.goBack();
-                          } else {
-                            Toast.show({
-                              type: 'error',
-                              text1: data.message || 'Failed to cancel order',
-                            });
-                          }
-                        } catch (error) {
-                          console.log('Cancel order error:', error);
-                          Toast.show({
-                            type: 'error',
-                            text1: 'Failed to cancel order',
-                          });
-                        }
-                      },
-                    },
-                  ]}
-                />
-              </View>
-            )}
-          </View>
-        </ScrollView>
-        
-      )}
-      {!navigationMode && !showContent && (
-  <TouchableOpacity
-    style={styles.tripDetailsBtn}
-    onPress={() => setShowContent(true)}
-  >
-    <Text style={styles.tripDetailsBtnText}>Show Details</Text>
-  </TouchableOpacity>
-)}
-      {cancelReasonModalVisible && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Cancel Reason</Text>
-              <TouchableOpacity onPress={() => { setCancelReasonModalVisible(false); setSelectedReason(null); }}>
-                <CrossIcon width={20} height={20} />
-              </TouchableOpacity>
-            </View>
-
-            {CANCEL_REASONS.map((reason, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.reasonItem}
-                onPress={() => {
-                  if (reason === 'Other') {
-                    setSelectedReason('Other');
-                  } else {
-                    setSelectedReason(reason);
-                    setCancelReasonModalVisible(false);
-
-                    setTimeout(() => {
-                      setCancelAlertVisible(true);
-                    }, 200);
-                  }
-                }}
-              >
-                <Text style={styles.reasonText}>{reason}</Text>
-              </TouchableOpacity>
-            ))}
-            {selectedReason === 'Other' && (
-              <TextInput
-                placeholder="Enter reason"
-                placeholderTextColor={Colors.black}
-                value={customReason}
-                onChangeText={setCustomReason}
-                style={styles.input}
-              />
-            )}
-            {selectedReason === 'Other' && (
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={() => {
-                  if (!customReason.trim()) {
-                    Toast.show({
-                      type: 'error',
-                      text1: 'Please enter a reason',
-                    });
-                    return;
-                  }
-
-                  setCancelReasonModalVisible(false);
-
-                  setTimeout(() => {
-                    setCancelAlertVisible(true);
-                  }, 200);
-                }}
-              >
-                <Text style={styles.confirmText}>Submit</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
       )}
 
+      {/* Cancel reason modal */}
+      <CancelReasonModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={handleCancelConfirm}
+      />
+
+      {/* Cancel confirm alert */}
+      <CustomAlert
+        visible={cancelAlertVisible}
+        title="Cancel Trip"
+        message="Are you sure you want to cancel this trip?"
+        onDismiss={() => setCancelAlertVisible(false)}
+        buttons={[
+          { text: 'No', style: 'cancel', onPress: () => setCancelAlertVisible(false) },
+          { text: 'Yes, Cancel', style: 'destructive', onPress: submitCancel },
+        ]}
+      />
+
+      {/* Trip complete modal */}
       <Modal visible={completeModalVisible} transparent animationType="fade">
-  <View style={styles.modalOverlay}>
-    <View style={styles.completeModal}>
-      <Text style={styles.completeTitle}>Trip Completed</Text>
-      <Text style={styles.completeSubtitle}>
-        {tripData?.walletDeductAmount
-          ? `Wallet deducted\n$${Number(tripData.walletDeductAmount).toFixed(2)} (Trip Commission)`
-          : 'No wallet deduction'}
-      </Text>
-      <TouchableOpacity
-        style={styles.confirmBtn}
-        onPress={() => {
-          setCompleteModalVisible(false);
-          const updatedTimestamps = { ...statusTimestamps, DELIVERY_COMPLETED: new Date().toISOString() };
-          navigation.navigate('TripComplete', {
-            trip: {
-              tripId: activeTripId,
-              orderId: activeOrderId,
-              customerName: order?.customerId?.fullName || order?.sender?.name,
-              dropAddress: order?.drop?.address,
-              pickup: order.pickup,
-              drop: order.drop,
-              earning: order?.finalPrice ?? order?.myQuote?.price ?? 0,
-              orderAcceptedAt: order?.createdAt,
-              pickedUpAt: updatedTimestamps['LOAD_COLLECTED'],
-              arrivedAtDropAt: updatedTimestamps['DELIVERY_COMPLETED'],
-              totalDistance: routeDistance,
-              totalDuration: routeDuration,
-              walletDeductAmount: tripData?.walletDeductAmount ?? 0,
-            },
-          });
-        }}
-      >
-        <Text style={styles.confirmText}>Confirm</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
+        <View style={styles.modalOverlay}>
+          <View style={styles.completeCard}>
+            <Text style={styles.completeTitle}>Trip Completed 🎉</Text>
+            <Text style={styles.completeSub}>
+              {tripData?.walletDeductAmount
+                ? `Wallet deducted\n$${Number(tripData.walletDeductAmount).toFixed(2)} (Commission)`
+                : 'No wallet deduction'}
+            </Text>
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={() => {
+                setCompleteModalVisible(false);
+                navigation.navigate('TripComplete', {
+                  trip: {
+                    tripId: activeTripId, orderId: activeOrderId,
+                    customerName: order?.customerId?.fullName || order?.sender?.name,
+                    dropAddress: order?.drop?.address,
+                    pickup: order.pickup, drop: order.drop,
+                    earning, orderAcceptedAt: order?.createdAt,
+                    pickedUpAt: statusTimestamps['LOAD_COLLECTED'],
+                    arrivedAtDropAt: statusTimestamps['DELIVERY_COMPLETED'],
+                    totalDistance: routeDistance, totalDuration: routeDuration,
+                    walletDeductAmount: tripData?.walletDeductAmount ?? 0,
+                  },
+                });
+              }}
+            >
+              <Text style={styles.confirmText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
+  container: { flex: 1, backgroundColor: Colors.bg },
+  mapPartial: { height: '45%' },
+  mapFull: { flex: 1 },
+  sheet: { flex: 1 },
+  handleWrap: { alignItems: 'center', paddingVertical: scale(10), backgroundColor: Colors.surface },
+  handle: { width: scale(40), height: scale(4), borderRadius: scale(2), backgroundColor: Colors.border },
+  showDetailsBtn: {
+    position: 'absolute', bottom: scale(30), left: scale(20), right: scale(20),
+    backgroundColor: Colors.primaryDark, height: scale(52), borderRadius: scale(14),
+    justifyContent: 'center', alignItems: 'center',
   },
-  map: {
-    height: scale(220),
+  showDetailsBtnText: { color: Colors.textLight, fontFamily: 'Rubik-SemiBold', fontSize: fontScale(15) },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  completeCard: {
+    width: '82%', backgroundColor: Colors.surface,
+    borderRadius: scale(16), padding: scale(24), alignItems: 'center',
   },
-  startRideBtn: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
-    backgroundColor: Colors.secondaryDark,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-
-  startRideText: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'Rubik-SemiBold',
-  },
-  navigationBox: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    right: 20,
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    elevation: 5,
-    zIndex: 999,
-  },
-
-  navText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 10,
-    fontFamily: 'Rubik-Regular',
-  },
-  navDistance: {
-    fontSize: 14,
-    color: '#666',
-  },
-  backBtn: {
-    position: 'absolute',
-    bottom: 100,
-    left: 20,
-    zIndex: 1000,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  backBtnText: {
-    color: '#fff',
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: 14,
-  },
-  content: {
-    padding: scale(8),
-    
-  },
-  hideModalBtn: {
-  position: 'absolute',
-  top: scale(15),
-  right: scale(15),
-  width: 60,
-  height: scale(20),
-  borderRadius: scale(16),
-  backgroundColor:"#e8e4e4",
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 999,
-  elevation: 5,
-},
-
-hideModalBtnText: {
-  fontSize: fontScale(15),
-  color: Colors.secondaryDark,
-  fontWeight: 700,
-  lineHeight: scale(24),
-},
-  locationCard: {
-    backgroundColor: '#fff',
-    borderRadius: scale(12),
-    padding: scale(15),
-  },
-tripDetailsBtn: {
-  position: 'absolute',
-  bottom: scale(25),
-  left: scale(20),
-  right: scale(20),
-  backgroundColor: Colors.secondaryDark,
-  height: scale(50),
-  borderRadius: scale(12),
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 100,
-},
-
-tripDetailsBtnText: {
-  color: '#fff',
-  fontFamily: 'Rubik-SemiBold',
-  fontSize: fontScale(16),
-},
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  label: {
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: fontScale(14),
-  },
-  address: {
-    fontFamily: 'Rubik-Regular',
-    fontSize: fontScale(12),
-    color: Colors.subtitle,
-    flexShrink: 1,
-  },
-  time: {
-    fontFamily: 'Rubik-Regular',
-    fontSize: fontScale(12),
-    color: Colors.gray,
-  },
-  actionIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-
-  },
-  actionRow: {
-    justifyContent: "space-around",
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: scale(12),
-  },
-  navigateBtn: {
-    // flex: 1,
-    flexDirection: 'row',
-    backgroundColor: Colors.secondaryDark,
-    height: scale(45),
-    borderRadius: scale(10),
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(40),
-  },
-  receiverMarker: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  navigateText: {
-    color: '#fff',
-    fontFamily: 'Rubik-SemiBold',
-  },
-  callBtn: {
-    height: scale(45),
-    width: scale(60),
-    borderRadius: scale(21),
-
-    justifyContent: 'center',
-    // backgroundColor: '#e8e4e4',
-    alignItems: 'center',
-   
-  },
-  sectionTitle: {
-    marginTop: scale(20),
-    marginBottom: scale(10),
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: fontScale(16),
-  },
-  detailCard: {
-    backgroundColor: '#fff',
-    borderRadius: scale(12),
-    padding: scale(15),
-  },
-  detailRow: {
-    marginBottom: scale(10),
-  },
-  detailTitle: {
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: fontScale(14),
-  },
-  detailSubtitle: {
-    fontFamily: 'Rubik-Regular',
-    fontSize: fontScale(12),
-    color: Colors.subtitle,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: scale(10),
-  },
-  earningCard: {
-    marginTop: scale(15),
-    backgroundColor: '#fff',
-    borderRadius: scale(12),
-    padding: scale(15),
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  earningLabel: {
-    fontFamily: 'Rubik-SemiBold',
-  },
-  earningAmount: {
-    fontFamily: 'Rubik-SemiBold',
-    color: '#1BAA5C',
-  },
-  btnRow: {
-    flexDirection: 'row',
-    marginTop: scale(20),
-    gap: scale(10),
-  },
-  startBtn: {
-    flex: 1,
-    backgroundColor: Colors.secondaryDark,
-    height: scale(50),
-    borderRadius: scale(10),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelBtn: {
-    backgroundColor: '#e0e0e0',
-    height: scale(44),
-    paddingHorizontal: scale(18),
-    borderRadius: scale(10),
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-  },
-  cancelText: {
-    color: '#333',
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: fontScale(14),
-  },
-  startText: {
-    color: '#fff',
-    fontFamily: 'Rubik-SemiBold',
-    fontSize: fontScale(16),
-  },
-
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-  },
-
-  modalContainer: {
-    width: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontFamily: 'Rubik-SemiBold',
-  },
-
-  reasonItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-  },
-  completeModal: {
-  width: '80%',
-  backgroundColor: '#fff',
-  borderRadius: 12,
-  padding: 20,
-  alignItems: 'center',
-},
-
-completeTitle: {
-  fontSize: 18,
-  fontWeight: 'bold',
-  marginBottom: 10,
-},
-
-completeSubtitle: {
-  fontSize: 16,
-  color: '#555',
-  marginBottom: 20,
-  textAlign: 'center',
-},
-
-  reasonText: {
-    fontSize: 14,
-    fontFamily: 'Rubik-Regular',
-  },
-
-  confirmBtn: {
-    marginTop: 15,
-    backgroundColor: Colors.secondaryDark,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-
-  confirmText: {
-    color: '#fff',
-    fontFamily: 'Rubik-SemiBold',
-  },
+  completeTitle: { fontFamily: 'Rubik-SemiBold', fontSize: fontScale(18), color: Colors.text, marginBottom: scale(8) },
+  completeSub: { fontFamily: 'Rubik-Regular', fontSize: fontScale(14), color: Colors.textMuted, textAlign: 'center', marginBottom: scale(20) },
+  confirmBtn: { backgroundColor: Colors.primaryDark, paddingVertical: scale(14), paddingHorizontal: scale(40), borderRadius: scale(12) },
+  confirmText: { color: Colors.textLight, fontFamily: 'Rubik-SemiBold', fontSize: fontScale(14) },
 });

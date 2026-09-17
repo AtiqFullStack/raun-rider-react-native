@@ -717,76 +717,7 @@ const [syncLoading, setSyncLoading] = useState(false);
             );
           })()}
 
-          {/* ── New Requests ── */}
-          {(() => {
-            // "ready" = food is prepared, no driver assigned yet → show as new request
-            const newOrders = orders.filter(
-              o =>
-                o.orderStatus === 'ready' ||
-                (
-                  !o.isAccepted &&
-                  o.driverRequestStatus !== 'ACCEPTED' &&
-                  o.status !== 'IN_PROGRESS' &&
-                  o.status !== 'ACCEPTED' &&
-                  o.orderStatus !== 'out_for_delivery'
-                ),
-            );
-            return (
-              <View style={{ marginTop: scale(20) }}>
-                {/* section header */}
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionDotWrap}>
-                    <View style={[styles.sectionDotOuter, { borderColor: '#E85D04' }]}>
-                      <View style={[styles.sectionDotInner, { backgroundColor: '#E85D04' }]} />
-                    </View>
-                  </View>
-                  <Text style={styles.sectionTitle}>New Requests</Text>
-                  {newOrders.length > 0 && (
-                    <View style={[styles.sectionBadge, { backgroundColor: '#FFF0EB' }]}>
-                      <Text style={[styles.sectionBadgeText, { color: '#E85D04' }]}>{newOrders.length}</Text>
-                    </View>
-                  )}
-                </View>
-
-                {newOrders.length === 0 ? (
-                  <View style={styles.emptyBox}>
-                    <Text style={styles.emptyText}>No new requests right now</Text>
-                  </View>
-                ) : (
-                  newOrders.map(item => (
-                    <NewOrderCard
-                      key={item._id}
-                      orderId={item.orderId || item._id}
-                      orderMongoId={item._id}
-                      serviceType={item.serviceId?.serviceType || item?.serviceId?.name || (item.orderStatus ? 'food' : undefined)}
-                      customerName={item.customerId?.fullName || '—'}
-                      pickupAddress={item.pickup?.address || '—'}
-                      dropAddress={item.drop?.address || '—'}
-                      distance={item.distance}
-                      itemSummary={item.package?.itemName || undefined}
-                      totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.estimatedPrice}
-                      currency={item.currency}
-                      createdAt={item.createdAt}
-                      status={
-                        item.isRequested
-                          ? 'BOOKING_REQUESTED'
-                          : sentQuotes.includes(item._id)
-                          ? 'QUOTE_SENT'
-                          : 'PENDING'
-                      }
-                      onPress={() => {
-                        setSelectedOrderForDetail(item);
-                        setIsDetailModalVisible(true);
-                      }}
-                      onAccept={() => fetchDriverOrders('ACTIVE')}
-                      onIgnore={() => setOrders(prev => prev.filter(o => o._id !== item._id))}
-                    />
-                  ))
-                )}
-              </View>
-            );
-          })()}
-
+      
             {selectedOrderForQuote && (
               <SendQuoteModal
                 visible={true}
