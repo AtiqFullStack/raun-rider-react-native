@@ -1,6 +1,6 @@
 // export const BASE_URL = 'https://v28lskqk-1111.inc1.devtunnels.ms/api';
-// export const BASE_URL = 'https://raunbn.com/backend/api';   
-export const BASE_URL = 'https://8ae2-2406-b400-75-360e-5d4b-8494-243e-bb76.ngrok-free.app/api';
+export const BASE_URL = 'https://raunbn.com/backend/api';   
+// export const BASE_URL = 'https://8ae2-2406-b400-75-360e-5d4b-8494-243e-bb76.ngrok-free.app/api';
 
 
 export const SOCKET_URL='https://socket.raunbn.com'
