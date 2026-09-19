@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import messaging from '@react-native-firebase/messaging';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import CompassHeading from 'react-native-compass-heading';
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Animated, Linking, Modal, Platform,
   StyleSheet, Text, TouchableOpacity, View,
@@ -116,10 +116,10 @@ export default function RideDetailsScreen() {
   // ── Refs ───────────────────────────────────────────────────────────────────
   const mapRef = useRef<MapView>(null);
   const tripStatusRef = useRef(tripStatus);
+  const driverLocationRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const lastHeadingRef = useRef(0);
   const lastCancelKeyRef = useRef<string | null>(null);
   const coordinate = useRef(new AnimatedRegion({ latitude: 0, longitude: 0, latitudeDelta: 0, longitudeDelta: 0 })).current;
-
   const currentOrder = orderDetails || order;
 
   // ── Derived values (food order response se map) ────────────────────────────
@@ -127,17 +127,17 @@ export default function RideDetailsScreen() {
   const { updateStatus: updateFoodStatus, cancelOrder: cancelFoodOrder } = useDriverFoodOrderService();
 
   // pickup = restaurant location, drop = deliveryAddress
-  const pickup = isFoodOrder ? {
+  const pickup = useMemo(() => isFoodOrder ? {
     lat: currentOrder?.restaurantId?.location?.coordinates?.latitude ?? currentOrder?.restaurantSnapshot?.location?.coordinates?.latitude,
     lng: currentOrder?.restaurantId?.location?.coordinates?.longitude ?? currentOrder?.restaurantSnapshot?.location?.coordinates?.longitude,
     address: currentOrder?.restaurantId?.location?.address ?? currentOrder?.restaurantSnapshot?.location?.address,
-  } : (currentOrder?.pickup || order?.pickup);
+  } : (currentOrder?.pickup || order?.pickup), [currentOrder, isFoodOrder, order?.pickup]);
 
-  const drop = isFoodOrder ? {
+  const drop = useMemo(() => isFoodOrder ? {
     lat: currentOrder?.deliveryAddress?.latitude,
     lng: currentOrder?.deliveryAddress?.longitude,
     address: currentOrder?.deliveryAddress?.formattedAddress ?? currentOrder?.deliveryAddress?.street,
-  } : (currentOrder?.drop || order?.drop);
+  } : (currentOrder?.drop || order?.drop), [currentOrder, isFoodOrder, order?.drop]);
 
   const customerPhone = isFoodOrder
     ? currentOrder?.userAuthId?.fullPhoneNumber
@@ -217,6 +217,7 @@ export default function RideDetailsScreen() {
     getCurrentLocation().then(loc => {
       if (!loc) return;
       const pos = { latitude: loc.lat, longitude: loc.long };
+      driverLocationRef.current = pos;
       setDriverLocation(pos);
       coordinate.setValue({ ...pos, latitudeDelta: 0, longitudeDelta: 0 });
       fetchRoute(pos);
@@ -284,7 +285,7 @@ export default function RideDetailsScreen() {
 
   // ── Fetch route ────────────────────────────────────────────────────────────
   const fetchRoute = useCallback(async (origin?: { latitude: number; longitude: number }) => {
-    const loc = origin || driverLocation;
+    const loc = origin || driverLocationRef.current;
     if (!loc?.latitude || !loc?.longitude) return;
 
     // Food order: before DELIVERY_STARTED → driver→restaurant, after → restaurant→drop
@@ -324,40 +325,34 @@ export default function RideDetailsScreen() {
       setRouteDuration(leg.duration.text);
       setSteps(leg.steps);
     } catch {}
-  }, [driverLocation, pickup, drop, isFoodOrder]);
+  }, [pickup, drop, isFoodOrder]);
 
   // ── Location tracking interval ─────────────────────────────────────────────
   useEffect(() => {
-    if (!activeTripId) return;
-    startDriverLocationTracking(activeTripId, user?._id || null, socket);
-
-    const locInterval = setInterval(async () => {
-      const loc = await getCurrentLocation();
-      if (!loc) return;
-      const pos = { latitude: loc.lat, longitude: loc.long };
-
-      if (socket?.connected && user?._id) {
-        socket.emit('DRIVER_LOCATION_UPDATE', { tripId: activeTripId, driverId: user._id, lat: loc.lat, lng: loc.long });
-      }
+    startDriverLocationTracking(activeTripId, user?._id || null, socket, loc => {
+      const pos = { latitude: loc.latitude, longitude: loc.longitude };
 
       (coordinate as any).timing({ ...pos, duration: 1500, useNativeDriver: false }).start();
+      driverLocationRef.current = pos;
       setDriverLocation(pos);
 
-      if (loc.heading !== null && loc.heading !== undefined && loc.heading >= 0) {
+      if (loc.heading >= 0) {
         lastHeadingRef.current = loc.heading;
         setCurrentHeading(loc.heading);
       }
 
-      mapRef.current?.animateCamera({ center: pos, heading: loc.heading || 0, pitch: 45, zoom: 17 }, { duration: 1500 });
-    }, 2000);
+      mapRef.current?.animateCamera(
+        { center: pos, heading: loc.heading, pitch: 45, zoom: 17 },
+        { duration: 1500 },
+      );
+    });
 
-    const routeInterval = setInterval(async () => {
-      const loc = await getCurrentLocation();
-      if (loc) fetchRoute({ latitude: loc.lat, longitude: loc.long });
+    const routeInterval = setInterval(() => {
+      if (driverLocationRef.current) fetchRoute(driverLocationRef.current);
     }, 8000);
 
-    return () => { clearInterval(locInterval); clearInterval(routeInterval); stopDriverLocationTracking(); };
-  }, [activeTripId, socket, user?._id, fetchRoute]);
+    return () => { clearInterval(routeInterval); stopDriverLocationTracking(); };
+  }, [activeTripId, socket, user?._id, fetchRoute, coordinate]);
 
   // ── Update food order status (PICKED_UP / DELIVERED) ─────────────────────
   const updateFoodOrderStatus = async () => {

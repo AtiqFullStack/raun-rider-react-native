@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline } from 'react-native-maps';
 
 interface Props {
@@ -23,6 +23,31 @@ export default function RideMap({
   const deliveryStarted = isFoodOrder && (tripStatus === 'DELIVERY_STARTED' || tripStatus === 'DELIVERY_COMPLETED');
   const showPickupMarker = isFoodOrder ? true : !rideStarted;
   const showDropMarker = isFoodOrder ? deliveryStarted : true;
+  const scooterHeading = useMemo(() => {
+    if (!driverLocation) return currentHeading;
+
+    // Find the nearest route segment and follow its start-to-destination bearing.
+    const longitudeScale = Math.cos(driverLocation.latitude * Math.PI / 180);
+    let nearestDistance = Infinity;
+    let heading = currentHeading;
+    for (let i = 0; i < routeCoords.length - 1; i += 1) {
+      const start = routeCoords[i];
+      const end = routeCoords[i + 1];
+      const x = (start.longitude - driverLocation.longitude) * longitudeScale;
+      const y = start.latitude - driverLocation.latitude;
+      const dx = (end.longitude - start.longitude) * longitudeScale;
+      const dy = end.latitude - start.latitude;
+      const lengthSquared = dx * dx + dy * dy;
+      if (lengthSquared === 0) continue;
+      const progress = Math.max(0, Math.min(1, -(x * dx + y * dy) / lengthSquared));
+      const distance = (x + progress * dx) ** 2 + (y + progress * dy) ** 2;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        heading = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+      }
+    }
+    return heading;
+  }, [driverLocation, routeCoords, currentHeading]);
 
   return (
     <MapView
@@ -65,12 +90,14 @@ export default function RideMap({
 
       {driverLocation && (
         <Marker.Animated
-          coordinate={coordinate as any}
+          coordinate={Platform.OS === 'android' ? driverLocation : coordinate as any}
+          // The scooter emoji faces left; offset it to match a north-based bearing.
+          rotation={isFoodOrder ? (scooterHeading + 90) % 360 : currentHeading}
           flat
           anchor={{ x: 0.5, y: 0.5 }}
           tracksViewChanges={false}
         >
-          <View style={[styles.vehicleMarker, { transform: [{ rotate: `${currentHeading}deg` }] }]}>
+          <View style={styles.vehicleMarker}>
             <Text style={styles.vehicleIcon}>{isFoodOrder ? '🛵' : '🚗'}</Text>
           </View>
         </Marker.Animated>

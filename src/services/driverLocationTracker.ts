@@ -2,22 +2,24 @@ import Geolocation from "react-native-geolocation-service";
 import { requestLocationPermission } from '../utils/requestLocationPermission';
 
 let watchId: number | null = null;
+let trackingGeneration = 0;
 
 export const startDriverLocationTracking = (
-  tripId: string,
+  tripId: string | null,
   driverId: string | null,
-  socket: any
+  socket: any,
+  onLocationChange?: (location: {
+    latitude: number;
+    longitude: number;
+    heading: number;
+  }) => void,
 ) => {
 
-  if (!tripId || !driverId) {
-    console.log("Missing tripId or driverId");
-    return;
-  }
-console.log('called')
-console.log(watchId)
   if (watchId !== null) return;
+  const generation = ++trackingGeneration;
 
   requestLocationPermission().then(hasPermission => {
+    if (generation !== trackingGeneration) return;
     if (!hasPermission) {
       console.log("Location permission denied");
       return;
@@ -25,11 +27,18 @@ console.log(watchId)
 
     watchId = Geolocation.watchPosition(
       position => {
-        const { latitude, longitude } = position.coords;
+        if (generation !== trackingGeneration) return;
+        const { latitude, longitude, heading } = position.coords;
 
         console.log("📍 Driver location:", latitude, longitude);
 
-        if (socket?.connected) {
+        onLocationChange?.({
+          latitude,
+          longitude,
+          heading: heading ?? 0,
+        });
+
+        if (tripId && driverId && socket?.connected) {
           socket.emit("DRIVER_LOCATION_UPDATE", {
             tripId,
             driverId,
@@ -43,16 +52,19 @@ console.log(watchId)
       },
       {
         enableHighAccuracy: true,
-        distanceFilter: 10, // update every 10 meters
-        interval: 5000,
-        fastestInterval: 3000,
+        distanceFilter: 0,
+        interval: 1000,
+        fastestInterval: 1000,
         showsBackgroundLocationIndicator: true,
       }
     );
+  }).catch(error => {
+    console.log('Location permission error:', error);
   });
 };
 
 export const stopDriverLocationTracking = () => {
+  trackingGeneration += 1;
   if (watchId !== null) {
     Geolocation.clearWatch(watchId);
     watchId = null;
