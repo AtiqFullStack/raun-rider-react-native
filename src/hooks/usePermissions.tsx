@@ -52,6 +52,15 @@ export default function usePermissions() {
     return fine || coarse;
   }, []);
 
+  const checkFullLocationPermission = useCallback(async () => {
+    if (Platform.OS === 'ios') return requestLocationPermission('always');
+    const fine = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    if (!fine) return false;
+    if (Platform.Version < 29) return true;
+    const bg = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION);
+    return bg;
+  }, []);
+
   // Background location with modal
   const requestLocationPermissionsBg = async () => {
     try {
@@ -59,7 +68,7 @@ export default function usePermissions() {
         return requestLocationPermission('always');
       }
 
-      const alreadyGranted = await checkLocationPermission();
+      const alreadyGranted = await checkFullLocationPermission();
       if (alreadyGranted) return true;
 
       return new Promise(resolve => {
@@ -175,7 +184,9 @@ export default function usePermissions() {
     requestCameraPermission,
     requestNotificationPermission,
     LocationPermissionModal,
-    camerAndNotification
+    camerAndNotification,
+    checkLocationPermission,
+    checkFullLocationPermission,
   };
 }
 

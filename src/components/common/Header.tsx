@@ -33,7 +33,7 @@ const GOLD = '#D0A645';
 
 export default function Header(props: any) {
   const navigation = useNavigation<any>();
-  const { requestLocationPermissionsBg, LocationPermissionModal: BgLocationPermissionModal } = usePermissions();
+  const { requestLocationPermissionsBg, checkFullLocationPermission, LocationPermissionModal: BgLocationPermissionModal } = usePermissions();
 
   const {
     showBadge = true,
@@ -65,6 +65,13 @@ export default function Header(props: any) {
     });
   }, []);
 
+  // On mount: if already online + permission granted, start service immediately
+  useEffect(() => {
+    if (!isOnline) return;
+    checkFullLocationPermission().then(perm => { if (perm) ForegroundService.start(); });
+  }, []);
+
+  // On toggle change
   const isMounted = React.useRef(false);
   useEffect(() => {
     if (!isMounted.current) { isMounted.current = true; return; }
