@@ -29,6 +29,7 @@ import { IMAGE_URL } from '../../utils/config';
 
 type VehicleCategory = {
   _id: string; name: string; icon: string; isActive: boolean;
+  serviceIds?: { _id: string; name: string; title?: string }[];
   serviceId?: { _id: string; name: string; title: string } | null;
 };
 
@@ -101,6 +102,16 @@ const PersonalStep: React.FC<PersonalStepProps> = ({
 }) => {
   const [showServicesSheet, setShowServicesSheet] = React.useState(false);
   const [showCategorySheet, setShowCategorySheet] = React.useState(false);
+  const availableCategories = vehicleCategories.filter(category =>
+    selectedServices.some(service =>
+      (category.serviceIds ?? []).some(id => id._id === service._id) ||
+      category.serviceId?._id === service._id
+    )
+  );
+
+  console.log("selectedServices", selectedServices);
+  console.log("appServices", appServices);
+
   return (
     <View style={styles.inputbox}>
       {/* First Name */}
@@ -328,7 +339,8 @@ const PersonalStep: React.FC<PersonalStepProps> = ({
       {/* Vehicle Category */}
       <View style={styles.inputContainer}>
         <Text style={styles.label}>Choose Vehicle Category</Text>
-        <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowCategorySheet(true)}>
+        <TouchableOpacity style={[styles.inputWrapper, selectedServices.length === 0 && { opacity: 0.5 }]}
+          disabled={selectedServices.length === 0} onPress={() => setShowCategorySheet(true)}>
           {selectedCategory ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
               <Image
@@ -338,8 +350,8 @@ const PersonalStep: React.FC<PersonalStepProps> = ({
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.selectInputText}>{selectedCategory.name}</Text>
-                {selectedCategory.serviceId && (
-                  <Text style={styles.serviceBadge}>{selectedCategory.serviceId.title}</Text>
+                {(selectedCategory.serviceIds?.length || selectedCategory.serviceId) && (
+                  <Text style={styles.serviceBadge}>{selectedCategory.serviceIds?.map(s => s.title || s.name).join(' · ') || selectedCategory.serviceId?.title}</Text>
                 )}
               </View>
             </View>
@@ -521,10 +533,7 @@ const PersonalStep: React.FC<PersonalStepProps> = ({
           <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: 20 }} />
         ) : (
           <FlatList
-            data={selectedServices.length > 0
-              ? vehicleCategories.filter(c => c.serviceId && selectedServices.some(s => s._id === c.serviceId!._id))
-              : vehicleCategories
-            }
+            data={availableCategories}
             keyExtractor={item => item._id}
             style={{ maxHeight: 400 }}
             ListEmptyComponent={<Text style={styles.emptyText}>No categories for selected services</Text>}
@@ -543,7 +552,7 @@ const PersonalStep: React.FC<PersonalStepProps> = ({
                   }
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.sheetItemText}>{item.name}</Text>
-                    {item.serviceId && <Text style={styles.serviceBadge}>{item.serviceId.title}</Text>}
+                    {(item.serviceIds?.length || item.serviceId) && <Text style={styles.serviceBadge}>{item.serviceIds?.map(s => s.title || s.name).join(' · ') || item.serviceId?.title}</Text>}
                   </View>
                   {isSelected && <CheckIcon width={18} height={18} />}
                 </TouchableOpacity>

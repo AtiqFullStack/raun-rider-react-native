@@ -58,7 +58,7 @@ const getNotificationContent = (data: any) => {
     case 'PAYMENT':
       return { title: '💰 Payment Received', body: data?.body || 'You have received a payment.' };
     default:
-      return { title: data?.title || "TRUCK'N BIKE", body: data?.body || 'You have a new notification.' };
+      return { title: data?.title || "RAUN", body: data?.body || 'You have a new notification.' };
   }
 };
 

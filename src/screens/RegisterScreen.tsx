@@ -30,6 +30,7 @@ interface RegisterScreenProps {
 
 type VehicleCategory = {
   _id: string; name: string; icon: string; isActive: boolean;
+  serviceIds?: { _id: string; name: string; title?: string }[];
   serviceId?: { _id: string; name: string; title: string } | null;
 };
 type VehicleSubcategory = {
@@ -311,6 +312,15 @@ const validatePhone = (phone: string, code: string) => {
 
   const handleSelectServices = (services: AppService[]) => {
     setSelectedServices(services);
+    if (selectedCategory && !services.some(service =>
+      (selectedCategory.serviceIds ?? []).some(id => id._id === service._id) ||
+      selectedCategory.serviceId?._id === service._id
+    )) {
+      setSelectedCategory(null);
+      setSelectedSubcategory(null);
+      updateField('vehicleType', '');
+      updateField('vehicleCapacity', '');
+    }
     // reset subcategory if PARCEL deselected
     const stillHasParcel = services.some(s => s.name === 'PARCEL');
     if (!stillHasParcel) setSelectedSubcategory(null);
