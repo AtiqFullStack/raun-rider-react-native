@@ -121,9 +121,19 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
   const [quoteSent, setQuoteSent] = useState(order.isRequested || sentQuotes.includes(order._id));
 
   const isCab = order.serviceType === 'CAB';
-  const isFoodOrder = order.orderStatus === 'ready' ||
+  const isFoodOrder = 
+    order.orderStatus === 'ready' ||
+    order.serviceType === 'food' || 
+    order.serviceType === 'FOOD' ||
     order.serviceId?.serviceType === 'food' ||
-    order.serviceId?.name === 'food';
+    order.serviceId?.name?.toLowerCase().includes('food');
+  
+  const isParcelOrder = 
+    order.serviceType === 'parcel' ||
+    order.serviceType === 'PARCEL' ||
+    order._orderType === 'parcel' ||
+    order.loadRequestNumber ||
+    order.sender !== undefined;
 
   const svc = SERVICE_CONFIG[order.serviceId?.serviceType || order.serviceId?.name || (isFoodOrder ? 'food' : '')] || DEFAULT_SVC;
 
@@ -236,40 +246,44 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {/* ── customer row ── */}
-            <View style={styles.customerRow}>
-              <View style={styles.avatarWrap}>
-                {order.customerId?.portraitPhoto ? (
-                  <Image
-                    source={{ uri: `${IMAGE_URL}/${order.customerId.portraitPhoto}` }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Text style={styles.avatarInitial}>
-                      {(order.customerId?.fullName || '?')[0].toUpperCase()}
-                    </Text>
+            {/* ── customer row (only show if food accepted or parcel converted) ── */}
+            {(isFoodOrder && order.isAccepted) || (isParcelOrder && order.status !== 'submitted') ? (
+              <>
+                <View style={styles.customerRow}>
+                  <View style={styles.avatarWrap}>
+                    {order.customerId?.portraitPhoto ? (
+                      <Image
+                        source={{ uri: `${IMAGE_URL}/${order.customerId.portraitPhoto}` }}
+                        style={styles.avatar}
+                      />
+                    ) : (
+                      <View style={[styles.avatar, styles.avatarFallback]}>
+                        <Text style={styles.avatarInitial}>
+                          {(order.customerId?.fullName || '?')[0].toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.onlineDot} />
                   </View>
-                )}
-                <View style={styles.onlineDot} />
-              </View>
-              <View style={styles.customerInfo}>
-                <Text style={styles.customerName} numberOfLines={1}>
-                  {order.customerId?.fullName || '—'}
-                </Text>
-                <Text style={styles.timeAgo}>{timeAgo(order.createdAt)}</Text>
-              </View>
-              {displayAmount !== undefined && displayAmount !== null && (
-                <View style={styles.amountBadge}>
-                  <Text style={styles.amountText}>
-                    {formatMoney(displayAmount, order.currency)}
-                  </Text>
+                  <View style={styles.customerInfo}>
+                    <Text style={styles.customerName} numberOfLines={1}>
+                      {order.customerId?.fullName || '—'}
+                    </Text>
+                    <Text style={styles.timeAgo}>{timeAgo(order.createdAt)}</Text>
+                  </View>
+                  {displayAmount !== undefined && displayAmount !== null && (
+                    <View style={styles.amountBadge}>
+                      <Text style={styles.amountText}>
+                        {formatMoney(displayAmount, order.currency)}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              )}
-            </View>
 
-            {/* ── divider ── */}
-            <View style={styles.divider} />
+                {/* ── divider ── */}
+                <View style={styles.divider} />
+              </>
+            ) : null}
 
             {/* ── route ── */}
             <Section title="ROUTE">
@@ -281,10 +295,14 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 </View>
                 <View style={styles.routeTexts}>
                   <Text style={styles.routeLabel}>PICKUP</Text>
-                  <Text style={styles.routeAddress}>{order.pickup?.address || '—'}</Text>
+                  <Text style={styles.routeAddress}>
+                    {order.pickup?.address || order.pickupLocation?.address || '—'}
+                  </Text>
                   <View style={{ height: verticalScale(12) }} />
                   <Text style={styles.routeLabel}>DROP OFF</Text>
-                  <Text style={styles.routeAddress}>{order.drop?.address || '—'}</Text>
+                  <Text style={styles.routeAddress}>
+                    {order.drop?.address || order.dropoffLocation?.address || '—'}
+                  </Text>
                 </View>
               </View>
               {!!order.distance && (
@@ -302,21 +320,25 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
               </View>
             ) : (
               <>
-                {/* Food order items */}
-                {isFoodOrder && order.package?.itemName && (
+                {/* 🍕 Food order items */}
+                {isFoodOrder && order.items && order.items.length > 0 && (
                   <Section title="ORDER ITEMS">
-                    <Text style={styles.itemSummary}>{order.package.itemName}</Text>
+                    {order.items.map((item: any, i: number) => (
+                      <Text key={i} style={styles.itemSummary}>
+                        {item.quantity}x {item.name}
+                      </Text>
+                    ))}
                   </Section>
                 )}
 
-                {/* Food order: customer phone when active */}
+                {/* 🍕 Food order: customer phone when active */}
                 {isFoodOrder && order.isAccepted && (order as any).customerPhone && (
                   <Section title="CUSTOMER">
                     <InfoRow label="Phone" value={(order as any).customerPhone} />
                   </Section>
                 )}
 
-                {/* CAB: passenger info */}
+                {/* 🚕 CAB: passenger info */}
                 {isCab && (
                   <Section title="PASSENGER">
                     <InfoRow label="Name" value={order.passenger?.name || orderDetail?.passenger?.name} />
@@ -334,26 +356,39 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                   </Section>
                 )}
 
-                {/* Parcel: sender + receiver */}
-                {!isCab && !isFoodOrder && (
+                {/* 📦 Parcel: sender + receiver (only if converted to order or accepted) */}
+                {isParcelOrder && order.status !== 'submitted' && (
                   <Section title="CONTACTS">
-                    <InfoRow label="Sender" value={orderDetail?.sender?.name || '—'} />
-                    <InfoRow label="Sender Phone" value={orderDetail?.sender?.phone} />
-                    <InfoRow label="Receiver" value={orderDetail?.receiver?.name || '—'} />
-                    <InfoRow label="Receiver Phone" value={orderDetail?.receiver?.phone} />
+                    <InfoRow label="Sender" value={order.sender?.name || orderDetail?.sender?.name || '—'} />
+                    <InfoRow label="Sender Phone" value={order.sender?.phone || orderDetail?.sender?.phone} />
+                    <InfoRow label="Receiver" value={order.receiver?.name || orderDetail?.receiver?.name || '—'} />
+                    <InfoRow label="Receiver Phone" value={order.receiver?.phone || orderDetail?.receiver?.phone} />
                   </Section>
                 )}
 
-                {/* Package details */}
-                {!isCab && !isFoodOrder && (
+                {/* 📦 Parcel: package details */}
+                {isParcelOrder && (
                   <Section title="PACKAGE">
-                    <InfoRow label="Item" value={order.package?.itemName} />
+                    <InfoRow 
+                      label="Items" 
+                      value={
+                        order.loadItems && order.loadItems.length > 0
+                          ? `${order.loadItems.length}x item${order.loadItems.length > 1 ? 's' : ''}`
+                          : order.package?.itemName
+                      } 
+                    />
                     <InfoRow
                       label="Weight"
-                      value={order.package?.weight ? `${order.package.weight} ${order.package.weightUnit}` : undefined}
+                      value={
+                        order.weight?.value 
+                          ? `${order.weight.value} ${order.weight.unit}` 
+                          : order.package?.weight ? `${order.package.weight} ${order.package.weightUnit}` : undefined
+                      }
                     />
-                    <InfoRow label="Description" value={order.package?.description} />
-                    <InfoRow label="Payment" value={order.package?.paymentMode} />
+                    <InfoRow label="Type" value={order.typeOfProduct} />
+                    <InfoRow label="Description" value={order.loadDescription || order.package?.description} />
+                    <InfoRow label="Payment" value={order.paymentMethod || order.package?.paymentMode} />
+                    <InfoRow label="Payer" value={order.payerType} />
                   </Section>
                 )}
 
@@ -371,8 +406,8 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                   </Section>
                 )}
 
-                {/* Package photos */}
-                {!isCab && orderDetail?.package?.photos?.length > 0 && (
+                {/* 📷 Package photos */}
+                {isParcelOrder && orderDetail?.package?.photos?.length > 0 && (
                   <Section title="PHOTOS">
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: scale(4) }}>
                       {orderDetail.package.photos.map((p: any, i: number) => (

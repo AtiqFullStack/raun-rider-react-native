@@ -16,8 +16,8 @@ import FileIcon from '../assets/svg/file.svg';
 import SafeWrapper from '../components/SafeWrapper';
 import Header from '../components/common/Header';
 import { useAuth } from '../context/AuthContext';
-import { fontScale, verticalScale } from '../utils/scaling';
-import { Colors } from '../constants/Colors';
+import { fontScale, scale, verticalScale } from '../utils/scaling';
+import { colors, Colors } from '../constants/Colors';
 import { api } from '../services/apiClient';
 import { imgaeUrlConverter } from '../utils/converter';
 import PhoneIcon from '../assets/svg/phone.svg';
@@ -200,6 +200,24 @@ const ProfileScreen = () => {
   };
 
 
+const Chip = ({name}:String)=>{
+  console.log(name)
+  return <View style={{
+    backgroundColor:colors.primary,
+    paddingHorizontal:4,
+    paddingVertical:1.2,
+    borderRadius:10,
+    paddingLeft:5
+  }}>
+    <Text style={{
+
+      color:colors.textLight,
+      fontWeight:'bold',
+      fontSize:scale(10)
+    }}>{name}</Text>
+  </View>
+}
+
 
   return (
     <SafeWrapper>
@@ -287,6 +305,12 @@ const ProfileScreen = () => {
 
         {/* ── Card 2: Personal Details ── */}
         <View style={styles.card}>
+          <View style={{flexDirection:"row", gap:scale(6) ,marginBottom:10} }>
+            {
+              profile?.selectedServices.map((m)=> <Chip name={m.name || ""} />)
+            }
+           
+          </View>
           <View style={styles.detailItem}>
             <View style={styles.iconBg}>
               <PhoneIcon />

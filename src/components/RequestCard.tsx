@@ -50,14 +50,16 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }
   COMPLETED:         { label: 'Completed',         bg: '#F3F4F6', color: '#374151' },
 };
 
-export default function RequestCard({
+export default function RequestCard(props: RequestCardProps) {
+  const {
   name, pickup, drop, photo, createdAt, distance,
   weight, weightUnit, itemName, status = 'PENDING',
   price, estimatedTime, orderId, orderIdNormal,
   disableActions = false, isCab = false, passengerName,
   onCancel, onSendQuote, onRemove, onAcceptDelivery,
   service
-}: RequestCardProps) {
+}=props
+console.log(props)
 
   const { socket, isSocketConnected } = useSocket();
   const { user } = useAuth();
@@ -150,9 +152,9 @@ export default function RequestCard({
       <View style={styles.topBar}>
         <View style={[styles.serviceBadge, { backgroundColor: svc.bg }]}>
           <View style={[styles.serviceDot, { backgroundColor: svc.dot }]} />
-          <Text style={[styles.serviceLabel, { color: svc.color }]}>{service}</Text>
+           <Text style={[styles.serviceLabel, { color: svc.color }]}>{service}</Text>
         </View>
-        <Text style={styles.orderId}>{orderIdNormal}</Text>
+        {/* <Text style={styles.orderId}>{orderIdNormal}</Text> */}
       </View>
 
       {/* ── HEADER: avatar + name + status ── */}
@@ -184,6 +186,7 @@ export default function RequestCard({
           <View style={styles.routeAddresses}>
             <View style={styles.addressBlock}>
               <Text style={styles.routeLabel}>PICKUP</Text>
+              <Text>{isAccepted?"YES":"NO"}</Text>
               <Text style={styles.routeAddress} numberOfLines={2}>{pickup?.address}</Text>
             </View>
             <View style={[styles.addressBlock, { marginTop: verticalScale(10) }]}>

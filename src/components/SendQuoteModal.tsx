@@ -7,26 +7,24 @@ import {
   StyleSheet,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import useAxios from '../hooks/useAxios'; // adjust path if needed
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../constants/Colors';
 import { scale, fontScale, verticalScale } from '../utils/scaling';
-
 import Toast from 'react-native-toast-message';
 import { AppEvents, EVENTS } from '../utils/events';
+import { api } from '../services/apiClient';
 
 interface SendQuoteModalProps {
   visible: boolean;
   onClose: () => void;
-  orderMongoId: string; // 👈 THIS IS IMPORTANT
+  orderMongoId: string;
   orderDetails: {
-    distance: string;
-    weight: string | number;
+    distance?: string;
+    weight?: string | number;
     itemName?: string;
-    weightUnit:string;
+    weightUnit?: string;
   };
   defaultPrice?: number;
   alreadySent: boolean;
@@ -42,464 +40,296 @@ const SendQuoteModal: React.FC<SendQuoteModalProps> = ({
   alreadySent,
   onQuoteSuccess,
 }) => {
-  const [yourPrice, setYourPrice] = useState('');
-  const [estimatedTime, setEstimatedTime] = useState('');
-  const { fetchData, setToken } = useAxios();
+  const [fare, setFare] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // const [quoteSent, setQuoteSent] = useState(false);
-  const [commission, setCommission] = useState<number>(0);
-
-  const numericPrice = parseFloat(yourPrice) || 0;
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const appFee = (numericPrice * commission) / 100;
-
-const customerTotalPay = numericPrice + appFee;
-
 
   useEffect(() => {
-    const loadToken = async () => {
-      const storedToken = await AsyncStorage.getItem('token');
-      if (storedToken) {
-        setToken(storedToken);
-      }
-    };
-
-    if (visible) {
-      loadToken();
-      if (defaultPrice) {
-        setYourPrice(defaultPrice.toString());
-      }
+    if (visible && defaultPrice) {
+      setFare(defaultPrice.toString());
     }
-  }, [visible, defaultPrice, setToken]);
+  }, [visible, defaultPrice]);
 
-  useEffect(() => {
-    const loadTokenAndCommission = async () => {
-      const storedToken = await AsyncStorage.getItem('token');
-
-      if (storedToken) {
-        setToken(storedToken);
-      }
-
-      try {
-        const res = await fetchData({
-          method: 'GET',
-          url: '/admin/auth/getCommissionRate',
-        });
-
-        if (res?.data?.customerPercentage !== undefined) {
-          setCommission(res.data.customerPercentage);
-        }
-      } catch (error) {
-        console.log('Commission fetch error:', error);
-      }
-    };
-
-    if (visible) {
-      loadTokenAndCommission();
-
-      if (defaultPrice) {
-        setYourPrice(defaultPrice.toString());
-      }
-    }
-  }, [visible, defaultPrice, fetchData, setToken]);
-
-  useEffect(() => {
-    console.log('SendQuoteModal mounted with orderMongoId:', orderMongoId);
-  }, [orderMongoId]);
-
-  const sendQuoteApi = async () => {
-    if (!yourPrice || !estimatedTime) {
-      setErrorMessage('Please enter price and ETA');
+  const handleSendQuote = async () => {
+    if (!fare || parseFloat(fare) <= 0) {
+      Toast.show({ type: 'error', text1: 'Please enter a valid fare' });
       return;
     }
 
-    const price = parseFloat(yourPrice);
-    const eta = parseInt(estimatedTime, 10);
-
-    if (isNaN(price) || price <= 0) {
-      setErrorMessage('Enter a valid price greater than 0');
-    }
-
-    if (isNaN(eta) || eta <= 0) {
-      setErrorMessage('Enter a valid ETA in minutes');
-    }
-
-    const payload = {
-      orderId: orderMongoId,
-      price: Number(numericPrice.toFixed(2)),
-      eta: estimatedTime,
-    };
-    console.log("send quote payload",payload)
-
     try {
       setIsSubmitting(true);
-
-      const response = await fetchData({
-        method: 'POST',
-        url: '/user/order/send/quote',
-        data: payload,
+      await api.post(`/driver/parcel-requests/${orderMongoId}/send-quote`, {
+        price: parseFloat(fare),
       });
-
-      Toast.show({
-        type: 'success',
-        text1: response?.message || 'Quote sent successfully',
-      });
+      
+      Toast.show({ type: 'success', text1: 'Quote sent successfully!' });
       onQuoteSuccess(orderMongoId);
-      AppEvents.emit(EVENTS.REFRESH_ORDERS); // 🔥
+      AppEvents.emit(EVENTS.REFRESH_ORDERS);
       onClose();
-    } catch (err: any) {
-      setErrorMessage(err?.response?.data?.message || 'Something went wrong');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Failed to send quote';
+      Toast.show({ type: 'error', text1: msg });
     } finally {
       setIsSubmitting(false);
     }
   };
   return (
     <Modal
-      animationType="slide"
-      transparent
       visible={visible}
-      presentationStyle="overFullScreen"
+      transparent
+      animationType="slide"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-            >
-              {/* Header */}
-              <View style={styles.header}>
-                <Text style={styles.headerTitle}>SEND QUOTE FOR DELIVERY </Text>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          {/* ── drag handle ── */}
+          <View style={styles.handle} />
 
-                {/* <Cross onPress={dismiss()} /> */}
-              </View>
-              {/* Order Details */}
-              <View style={styles.detailsSection}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>DISTANCE:</Text>
-                  <Text style={styles.detailValue}>{orderDetails.distance}</Text>
+          {/* ── header ── */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Send Quote</Text>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.closeX}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* ── order details section ── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>ORDER DETAILS</Text>
+              {orderDetails.distance && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Distance</Text>
+                  <Text style={styles.value}>{orderDetails.distance}</Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>WEIGHT:</Text>
-                  <Text style={styles.detailValue}>
+              )}
+              {orderDetails.weight && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Weight</Text>
+                  <Text style={styles.value}>
                     {typeof orderDetails.weight === 'number'
-                      ? `${orderDetails.weight} ${orderDetails.weightUnit}`
+                      ? `${orderDetails.weight} ${orderDetails.weightUnit || 'kg'}`
                       : orderDetails.weight}
                   </Text>
                 </View>
-              </View>
-
-              {/* Divider */}
-              <View style={styles.divider} />
-
-              {/* Price Input */}
-              <View style={styles.priceSection}>
-                <Text style={styles.sectionTitle}>Your Price</Text>
-                <View style={styles.priceInputContainer}>
-                  <TextInput
-                    style={styles.priceInput}
-                    value={yourPrice}
-                    onChangeText={text => {
-                      const cleaned = text.replace(/[^0-9]/g, '');
-                      setYourPrice(cleaned);
-                    }}
-                    placeholder="0"
-                    keyboardType="number-pad"
-                    placeholderTextColor={Colors.Textgray}
-                  />
+              )}
+              {orderDetails.itemName && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>Items</Text>
+                  <Text style={styles.value}>{orderDetails.itemName}</Text>
                 </View>
-              </View>
+              )}
+            </View>
 
-              {/* Calculation Section */}
-              <View style={styles.calculationSection}>
-                <View style={styles.calculationRow}>
-                  <Text style={styles.calculationLabel}>Your Price:</Text>
-                  <Text style={styles.calculationValue}>${numericPrice}</Text>
-                </View>
-
-                <View style={styles.calculationRow}>
-                  <Text style={styles.calculationLabel}>
-                    App Usage Fee ({commission}%)
-                  </Text>
-                  <Text style={[styles.calculationValue, styles.feeText]}>
-                    ${appFee}
-                  </Text>
-                </View>
-
-                <View style={styles.divider} />
-
-                <View style={[styles.calculationRow, styles.totalRow]}>
-                  <Text style={styles.totalLabel}>Total Customer Pays</Text>
-                  <Text style={styles.totalValue}>
-                    ${customerTotalPay.toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Estimated Time Input */}
-              <View style={styles.timeSection}>
-                <Text style={styles.feeNote}>
-                  The total amount includes the App Usage Fee to be paid to you
-                  by the Customer, and will be deducted from your Retainer
-                  Deposit with the App.
-                </Text>
-                <Text style={styles.sectionTitle}>Estimated Time (minutes)</Text>
+            {/* ── fare input section ── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>YOUR FARE</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.currencySymbol}>BND</Text>
                 <TextInput
-                  style={styles.timeInput}
-                  value={estimatedTime}
-                  onChangeText={text => {
-                    const cleaned = text.replace(/[^0-9]/g, '');
-                    setEstimatedTime(cleaned);
-                  }}
-                  placeholder="Enter estimated minutes"
-                  keyboardType="numeric"
-                  placeholderTextColor={Colors.Textgray}
+                  style={styles.fareInput}
+                  value={fare}
+                  onChangeText={setFare}
+                  placeholder="0.00"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="decimal-pad"
                 />
               </View>
-              {errorMessage && (
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              )}
-              {/* Buttons */}
-              <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                  style={[styles.button, styles.cancelButton]}
-                  onPress={onClose}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
+            </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    styles.submitButton,
-                    (isSubmitting || alreadySent) && styles.disabledButton,
-                  ]}
-                  onPress={sendQuoteApi}
-                  disabled={isSubmitting || alreadySent}
-                >
-                  <Text style={styles.submitButtonText}>
-                    {alreadySent
-                      ? 'Quote Sent'
-                      : isSubmitting
-                      ? 'Sending...'
-                      : 'Send Quote'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            {/* ── spacer ── */}
+            <View style={{ height: verticalScale(80) }} />
+          </ScrollView>
+
+          {/* ── action buttons ── */}
+          <View style={styles.actionBar}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.primaryBtn,
+                (isSubmitting || alreadySent) && { opacity: 0.6 },
+              ]}
+              onPress={handleSendQuote}
+              disabled={isSubmitting || alreadySent}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryBtnText}>
+                {alreadySent
+                  ? 'Quote Sent'
+                  : isSubmitting
+                  ? 'Sending...'
+                  : 'Send Quote'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContainer: {
+  sheet: {
     backgroundColor: Colors.white,
-    borderRadius: scale(16),
-    width: '90%',
+    borderTopLeftRadius: scale(24),
+    borderTopRightRadius: scale(24),
     maxHeight: '85%',
-    paddingVertical: scale(5),
+    paddingBottom: Platform.OS === 'ios' ? verticalScale(30) : verticalScale(16),
   },
-  scrollContent: {
-    padding: scale(20),
-    paddingBottom: verticalScale(32),
+  handle: {
+    width: scale(40),
+    height: scale(4),
+    borderRadius: scale(2),
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginTop: verticalScale(10),
+    marginBottom: verticalScale(4),
   },
   header: {
-    alignItems: 'flex-start',
-    marginBottom: scale(20),
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   headerTitle: {
-    fontSize: fontScale(18),
+    fontSize: fontScale(16),
     fontFamily: 'Rubik-SemiBold',
-    color: Colors.black,
-    // textAlign: 'flex-start',
+    color: '#111827',
   },
-  detailsSection: {
-    backgroundColor: Colors.quoteBg,
-    borderRadius: scale(10),
-    padding: scale(15),
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: scale(10),
+  closeBtn: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: scale(8),
+  closeX: {
+    fontSize: fontScale(13),
+    color: '#6B7280',
+    fontFamily: 'Rubik-Medium',
   },
-  detailLabel: {
-    fontSize: fontScale(14),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black1,
+  scrollContent: {
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(16),
   },
-  detailValue: {
-    fontSize: fontScale(14),
-    fontFamily: 'Rubik-Regular',
-    marginHorizontal: verticalScale(5),
-    color: Colors.Textgray,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.gray,
-    marginVertical: scale(15),
-    borderStyle: 'dashed',
-    borderWidth: 0.9,
-    borderColor: Colors.Textgray,
-  },
-  priceSection: {
-    marginBottom: scale(20),
+  section: {
+    marginBottom: verticalScale(20),
+    backgroundColor: '#FAFAFA',
+    borderRadius: scale(12),
+    padding: scale(14),
+    borderWidth: 1,
+    borderColor: '#F0F0F5',
   },
   sectionTitle: {
-    fontSize: fontScale(16),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black,
-    marginBottom: scale(5),
+    fontSize: fontScale(11),
+    fontFamily: 'Rubik-SemiBold',
+    color: '#9CA3AF',
+    letterSpacing: 0.8,
+    marginBottom: verticalScale(10),
   },
-  priceInputContainer: {
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: verticalScale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  label: {
+    fontSize: fontScale(13),
+    fontFamily: 'Rubik-Regular',
+    color: '#6B7280',
+  },
+  value: {
+    fontSize: fontScale(14),
+    fontFamily: 'Rubik-SemiBold',
+    color: '#111827',
+  },
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.borderColor2,
-    borderRadius: scale(8),
-    paddingHorizontal: scale(15),
-    paddingVertical: scale(8),
-    marginBottom: scale(8),
+    borderColor: '#E5E7EB',
+    borderRadius: scale(12),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(10),
+    backgroundColor: '#FFFFFF',
   },
   currencySymbol: {
-    fontSize: fontScale(20),
-    fontFamily: 'Rubik-Medium',
-    color: Colors.black,
-    marginRight: scale(5),
-  },
-  priceInput: {
-    flex: 1,
-    fontSize: fontScale(20),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.Textgray,
-    padding: 0,
-  },
-  priceNote: {
-    fontSize: fontScale(12),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.Textgray,
-    textAlign: 'center',
-  },
-  calculationSection: {
-    backgroundColor: Colors.quoteBg,
-    borderRadius: scale(10),
-    padding: scale(15),
-    marginBottom: scale(20),
-  },
-  calculationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: scale(10),
-  },
-  calculationLabel: {
-    fontSize: fontScale(15),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black1,
-  },
-  calculationValue: {
-    fontSize: fontScale(15),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black,
-  },
-  feeText: {
-    fontSize: fontScale(15),
-    color: Colors.black,
-  },
-  totalRow: {
-    marginTop: scale(10),
-  },
-  totalLabel: {
-    fontSize: fontScale(15),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black,
-  },
-  totalValue: {
     fontSize: fontScale(16),
     fontFamily: 'Rubik-SemiBold',
-    color: Colors.black,
+    color: '#111827',
+    marginRight: scale(8),
   },
-  feeNote: {
-    fontSize: fontScale(12),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.Textgray,
-    marginBottom: scale(15),
-    lineHeight: scale(16),
-  },
-  timeSection: {
-    marginBottom: scale(25),
-  },
-  timeInput: {
-    borderWidth: 1,
-    borderColor: Colors.gray,
-    borderRadius: scale(8),
-    paddingHorizontal: scale(15),
-    paddingVertical: scale(12),
-    fontSize: fontScale(16),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.Textgray,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: scale(15),
-  },
-  button: {
+  fareInput: {
     flex: 1,
-    paddingVertical: scale(15),
-    borderRadius: scale(8),
-    alignItems: 'center',
+    fontSize: fontScale(18),
+    fontFamily: 'Rubik-Medium',
+    color: '#111827',
+    padding: 0,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    gap: scale(10),
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(12),
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  cancelBtn: {
+    flex: 1,
+    height: scale(50),
+    borderRadius: scale(14),
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  cancelButton: {
-    backgroundColor: Colors.quoteBg,
+  cancelText: {
+    fontSize: fontScale(14),
+    fontFamily: 'Rubik-Medium',
+    color: '#6B7280',
   },
-  errorText: {
-  color: '#D32F2F',
-  fontSize: fontScale(14),
-  fontFamily: 'Rubik-Regular',
-  marginBottom: scale(10),
-  textAlign: 'center',
-},
-  cancelButtonText: {
-    fontSize: fontScale(16),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.black,
+  primaryBtn: {
+    flex: 2,
+    height: scale(50),
+    borderRadius: scale(14),
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  submitButton: {
-    backgroundColor: Colors.secondaryDark,
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  submitButtonText: {
-    fontSize: fontScale(16),
-    fontFamily: 'Rubik-Regular',
-    color: Colors.white,
+  primaryBtnText: {
+    fontSize: fontScale(15),
+    fontFamily: 'Rubik-SemiBold',
+    color: '#FFFFFF',
   },
 });
 

@@ -15,8 +15,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Colors } from '../constants/Colors';
 import { scale, fontScale } from '../utils/scaling';
 import Header from '../components/common/Header';
-import RequestCard from '../components/RequestCard';
-import NewOrderCard from '../components/NewOrderCard';
+import UnifiedOrderCard from '../components/UnifiedOrderCard';
 import { useAuth } from '../context/AuthContext';
 import useAxios from '../hooks/useAxios';
 import SendQuoteModal from '../components/SendQuoteModal';
@@ -97,10 +96,10 @@ const EmptyTripsIcon = () => (
   </View>
 );
 
-const SHOW_DUMMY=false
+const SHOW_DUMMY = false
 const SEARCH_DEBOUNCE_MS = 400;
 
-export default function  AllOrders() {
+export default function AllOrders() {
   const navigation = useNavigation<NavigationProp>();
   const { token, isOnline } = useAuth();
   const { fetchData } = useAxios();
@@ -139,18 +138,18 @@ export default function  AllOrders() {
     lon1: number,
     lat2: number,
     lon2: number,
-  ) => {
-    const R = 6371;
+  ): number => {
+    const R = 6371; // km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
     const a =
       Math.sin(dLat / 2) ** 2 +
       Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) ** 2;
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
 
-    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
   const fetchDriverOrders = useCallback(async (searchQuery = searchRef.current) => {
@@ -169,19 +168,45 @@ export default function  AllOrders() {
         const items = Array.isArray(data) ? data : data?.orders || [];
 
         return items.map((i: any) => {
-          const restaurantLocation =
-            i.restaurantId?.location || i.restaurantSnapshot?.location;
-          const address = i.deliveryAddress;
-          const pickup = i.pickup || {
-            lat: restaurantLocation?.coordinates?.latitude,
-            lng: restaurantLocation?.coordinates?.longitude,
-            address: restaurantLocation?.address || '',
-          };
-          const drop = i.drop || {
-            lat: address?.latitude,
-            lng: address?.longitude,
-            address: address?.formattedAddress || address?.street || '',
-          };
+          // Detect order type
+          const isFoodOrder = i._orderType === 'food' || i.restaurantId || i.orderNumber?.startsWith('R-FD');
+          const isParcelOrder = i._orderType === 'parcel' || i.loadRequestNumber;
+
+          // ── FOOD ORDER: pickup from restaurant, drop from delivery address ──
+          let pickup, drop;
+          if (isFoodOrder) {
+            const restaurantLocation = i.restaurantId?.location || i.restaurantSnapshot?.location;
+            const address = i.deliveryAddress;
+            pickup = i.pickup || {
+              lat: restaurantLocation?.coordinates?.latitude,
+              lng: restaurantLocation?.coordinates?.longitude,
+              address: restaurantLocation?.address || '',
+            };
+            drop = i.drop || {
+              lat: address?.latitude,
+              lng: address?.longitude,
+              address: address?.formattedAddress || address?.street || '',
+            };
+          }
+          // ── PARCEL ORDER: pickup from pickupLocation, drop from dropoffLocation ──
+          else if (isParcelOrder) {
+            pickup = i.pickup || {
+              lat: i.pickupLocation?.latitude,
+              lng: i.pickupLocation?.longitude,
+              address: i.pickupLocation?.address || '',
+            };
+            drop = i.drop || {
+              lat: i.dropoffLocation?.latitude,
+              lng: i.dropoffLocation?.longitude,
+              address: i.dropoffLocation?.address || '',
+            };
+          }
+          // ── Fallback ──
+          else {
+            pickup = i.pickup || { lat: undefined, lng: undefined, address: '' };
+            drop = i.drop || { lat: undefined, lng: undefined, address: '' };
+          }
+          console.log(pickup ,drop)
           const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
             .every(value => typeof value === 'number' && Number.isFinite(value));
           const tripDistanceKm = i.distanceKm ?? (hasCoordinates
@@ -192,10 +217,10 @@ export default function  AllOrders() {
             ...i,
             // Keep the Mongo ID for actions; show the readable order number.
             _id: i._id,
-            orderId: i.orderNumber || i.orderId || i._id,
+            orderId: i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
             status: i.orderStatus || i.status,
             // Mark food orders explicitly so the UI renders the right card
-            serviceType: i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.serviceType),
+            serviceType: i._orderType || i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.loadRequestNumber ? 'parcel' : 'other'),
             customerId: i.customerId || {
               _id: i.userAuthId?._id || i.userAuthId || '',
               fullName: i.deliveryAddress?.contactName || i.userAuthId?.fullName || '',
@@ -205,8 +230,8 @@ export default function  AllOrders() {
             customerPhone: i.customerPhone
               || i.userAuthId?.fullPhoneNumber
               || (i.userAuthId?.countryCode && i.userAuthId?.phoneNumber
-                  ? `${i.userAuthId.countryCode} ${i.userAuthId.phoneNumber}`
-                  : undefined),
+                ? `${i.userAuthId.countryCode} ${i.userAuthId.phoneNumber}`
+                : undefined),
             pickup,
             drop,
             package: i.package || {
@@ -220,8 +245,10 @@ export default function  AllOrders() {
               payer: 'SENDER',
               paymentMode: i.paymentMethod || '',
             },
-            distance: typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
-              ? `${Number(tripDistanceKm.toFixed(2))} KM`
+            distance: tripDistanceKm && typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
+              ? tripDistanceKm < 1 
+                ? `${Math.round(tripDistanceKm * 1000)}m`
+                : `${tripDistanceKm.toFixed(2)}km`
               : '',
           };
         });
@@ -230,7 +257,7 @@ export default function  AllOrders() {
       const fetchOrdersByType = (type: 'ALL' | 'ACTIVE') =>
         fetchData({
           method: 'GET',
-          url: '/driver/food-orders',
+          url: '/driver/orders',
           params: {
             latitude: location.lat,
             longitude: location.long,
@@ -299,7 +326,7 @@ export default function  AllOrders() {
   };
 
   useEffect(() => {
-    if(SHOW_DUMMY){
+    if (SHOW_DUMMY) {
       setLoading(true);
       setOrders(Object.values(DUMMY_TRIPS).flat() as OrderUI[]);
       setLoading(false);
@@ -512,122 +539,42 @@ export default function  AllOrders() {
             />
           }
           ListEmptyComponent={renderEmptyList}
-          renderItem={({ item }) => {
-            const isCab = item.serviceType === 'CAB';
-            const isFoodOrder = item.serviceType === 'food' || item.serviceType === 'FOOD';
-            const commonProps = {
-              name: item.customerId?.fullName || 'Unknown Customer',
-              photo: item.customerId?.portraitPhoto || '',
-              pickup: item.pickup,
-              drop: item.drop,
-              distance: item.distance,
-              weight: item.package?.weight || 0,
-              weightUnit: item.package?.weightUnit || '',
-              itemName: item.package?.itemName || '',
-              itemDescription: item.package?.description || '',
-              createdAt: item.createdAt,
-              orderId: item._id,
-              orderIdNormal: item.orderId,
-              isCab,
-              passengerName: item.passenger?.name,
-              service: item?.serviceId?.name,
-            };
-
-            // 🔵 ACCEPTED
-            if (isActiveOrder(item)) {
-              const totalAmount = item.totalAmount
-                ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount)
-                : undefined;
-              const displayPrice = item.finalPrice ?? item.price?.totalFare ?? totalAmount;
-              return (
-                <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
-                  <RequestCard
-                    {...commonProps}
-                    status={item.status === 'COMPLETED' ? 'COMPLETED' : 'ACCEPTED'}
-                    price={displayPrice}
-                  />
-                </TouchableOpacity>
-              );
-            }
-
-            // 🍕 FOOD ORDER — Accept / Ignore buttons
-            if (isFoodOrder) {
-              return (
-                <NewOrderCard
-                  orderId={item.orderId}
-                  orderMongoId={item._id}
-                  serviceType="food"
-                  serviceName={item?.serviceId?.name}
-                  customerName={item.customerId?.fullName || 'Customer'}
-                  pickupAddress={item.pickup?.address || ''}
-                  dropAddress={item.drop?.address || ''}
-                  distance={item.distance}
-                  itemSummary={item.package?.itemName}
-                  totalAmount={item.totalAmount ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount) : undefined}
-                  currency={item.currency || 'BND'}
-                  createdAt={item.createdAt}
-                  status="PENDING"
-                  onPress={() => openOrderDetail(item)}
-                  onAccept={() => {
-                    setCancelledOrderIds(prev => [...prev, item._id]);
-                    setOrders(prev => prev.filter(o => o._id !== item._id));
-                    fetchDriverOrders(searchRef.current);
-                  }}
-                  onIgnore={() => {
-                    setCancelledOrderIds(prev => [...prev, item._id]);
-                    setOrders(prev => prev.filter(o => o._id !== item._id));
-                  }}
-                />
-              );
-            }
-
-            // 🟡 BOOKING REQUESTED
-            if (item.isRequested) {
-              return (
-                <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
-                  <RequestCard
-                    {...commonProps}
-                    status="BOOKING_REQUESTED"
-                    price={item.myQuote?.price}
-                    estimatedTime={item.myQuote?.eta}
-                    onAcceptDelivery={tripId =>
-                      navigation.navigate('RideDetails', { order: { ...item, tripId, tripStatus: 'CREATED' } })
-                    }
-                  />
-                </TouchableOpacity>
-              );
-            }
-
-            // 🟢 QUOTE SENT
-            if (!isCab && sentQuotes.includes(item._id)) {
-              return (
-                <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
-                  <RequestCard
-                    {...commonProps}
-                    status="QUOTE_SENT"
-                    price={item.myQuote?.price}
-                    estimatedTime={item.myQuote?.eta}
-                  />
-                </TouchableOpacity>
-              );
-            }
-
-            // 🔴 PENDING (parcel / cab)
-            return (
-              <TouchableOpacity activeOpacity={0.9} onPress={() => openOrderDetail(item)}>
-                <RequestCard
-                  {...commonProps}
-                  status="PENDING"
-                  onCancel={() => setCancelAlertOrderId(item._id)}
-                  onSendQuote={isCab ? undefined : () => setSelectedOrderForQuote(item)}
-                  onRemove={id => {
-                    setCancelledOrderIds(prev => [...prev, id]);
-                    setOrders(prev => prev.filter(o => o._id !== id));
-                  }}
-                />
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item }) => (
+            <UnifiedOrderCard
+              _id={item._id}
+              _orderType={item.serviceType === 'food' ? 'food' : 'parcel'}
+              orderNumber={item.orderNumber}
+              orderStatus={item.orderStatus}
+              loadRequestNumber={item?.loadRequestNumber}
+              status={item.status}
+              restaurantId={item.restaurantId}
+              deliveryAddress={item.deliveryAddress}
+              items={item.items}
+              pickupLocation={item.pickupLocation}
+              dropoffLocation={item.dropoffLocation}
+              sender={item.sender}
+              receiver={item.receiver}
+              loadItems={item.loadItems}
+              weight={item.weight}
+              totalAmount={item.totalAmount ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount) : undefined}
+              currency={item.currency || 'BND'}
+              createdAt={item.createdAt}
+              assignedDriverId={item.assignedDriverId}
+              distance={item.distance}
+              pickup={item.pickup}
+              drop={item.drop}
+              onPress={() => openOrderDetail(item)}
+              onAccept={() => {
+                setCancelledOrderIds(prev => [...prev, item._id]);
+                setOrders(prev => prev.filter(o => o._id !== item._id));
+                fetchDriverOrders(searchRef.current);
+              }}
+              onIgnore={() => {
+                setCancelledOrderIds(prev => [...prev, item._id]);
+                setOrders(prev => prev.filter(o => o._id !== item._id));
+              }}
+            />
+          )}
         />
       )}
       {selectedOrderForQuote && (
