@@ -17,6 +17,7 @@ import { fontScale, scale } from '../utils/scaling';
 import RequestCard from '../components/RequestCard';
 import NewOrderCard from '../components/NewOrderCard';
 import ActiveOrderCard from '../components/ActiveOrderCard';
+import UnifiedOrderCard from '../components/UnifiedOrderCard';
 
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
@@ -414,7 +415,7 @@ const [syncLoading, setSyncLoading] = useState(false);
     },
   ];
 
-  const fetchDriverOrders = async (type: 'ALL' | 'ACTIVE', currentlyOnline = isOnline) => {
+  const fetchDriverOrders = async (type: 'ALL' | 'ACTIVE' = 'ALL', currentlyOnline = isOnline) => {
     if (!currentlyOnline) {
       setOrders([]);
       return;
@@ -426,28 +427,60 @@ const [syncLoading, setSyncLoading] = useState(false);
         const items = Array.isArray(data) ? data : data?.orders || [];
 
         return items.map((i: any) => {
+          const isFood = i._orderType === 'food' || i.sourceModel === 'FoodOrder' || !!i.restaurantId;
+          const isParcel = i._orderType === 'parcel' || i.sourceModel === 'LoadRequest' || !!i.loadRequestNumber;
+
           const restaurantLocation =
-            i.restaurantId?.location || i.restaurantSnapshot?.location;
-          const address = i.deliveryAddress;
-          const pickup = i.pickup || {
-            lat: restaurantLocation?.coordinates?.latitude,
-            lng: restaurantLocation?.coordinates?.longitude,
-            address: restaurantLocation?.address || '',
-          };
-          const drop = i.drop || {
-            lat: address?.latitude,
-            lng: address?.longitude,
-            address: address?.formattedAddress || address?.street || '',
-          };
+            i.restaurantId?.location || i.restaurantSnapshot?.location || i.orderDetails?.restaurantId?.location || i.serviceDetails?.restaurantId?.location;
+          const address = i.deliveryAddress || i.orderDetails?.deliveryAddress || i.serviceDetails?.deliveryAddress;
+
+          let pickup = i.pickup;
+          if (!pickup || (!pickup.lat && !pickup.address)) {
+            if (isFood) {
+              pickup = {
+                lat: restaurantLocation?.coordinates?.latitude,
+                lng: restaurantLocation?.coordinates?.longitude,
+                address: restaurantLocation?.address || i.restaurantId?.name || '',
+              };
+            } else if (isParcel) {
+              const pLoc = i.pickupLocation || i.orderDetails?.pickupLocation || i.serviceDetails?.pickupLocation;
+              pickup = {
+                lat: pLoc?.latitude,
+                lng: pLoc?.longitude,
+                address: pLoc?.address || '',
+              };
+            } else {
+              pickup = { lat: 0, lng: 0, address: '' };
+            }
+          }
+
+          let drop = i.drop;
+          if (!drop || (!drop.lat && !drop.address)) {
+            if (isFood) {
+              drop = {
+                lat: address?.latitude,
+                lng: address?.longitude,
+                address: address?.formattedAddress || address?.street || '',
+              };
+            } else if (isParcel) {
+              const dLoc = i.dropoffLocation || i.orderDetails?.dropoffLocation || i.serviceDetails?.dropoffLocation;
+              drop = {
+                lat: dLoc?.latitude,
+                lng: dLoc?.longitude,
+                address: dLoc?.address || '',
+              };
+            } else {
+              drop = { lat: 0, lng: 0, address: '' };
+            }
+          }
+
           const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
             .every(value => typeof value === 'number' && Number.isFinite(value));
           const tripDistanceKm = i.distanceKm ?? (hasCoordinates
             ? calculateDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng)
             : undefined);
 
-          // Build a human-readable customer label from whatever the API gives us.
-          // Food orders populate userAuthId with phone fields, not a fullName.
-          const userAuth = i.userAuthId;
+          const userAuth = i.userAuthId || i.customerId;
           const customerFullName =
             i.customerId?.fullName ||
             userAuth?.fullName ||
@@ -458,60 +491,64 @@ const [syncLoading, setSyncLoading] = useState(false);
             address?.contactName ||
             'Customer';
 
+          const orderStatus = i.status || i.orderStatus || 'pending';
+          const isAccepted = forceAccepted || i.isAccepted ||
+            ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed'].includes(
+              String(orderStatus).toLowerCase()
+            ) ||
+            i.driverRequestStatus === 'ACCEPTED';
+
           return {
             ...i,
             _id: i._id,
-            orderId: i.orderNumber || i.orderId || i._id,
-            status: i.orderStatus || i.status,
-            // Mark as accepted if the API returned it under ACTIVE type, or if it
-            // already carries an accepted status.
-            isAccepted: forceAccepted || i.isAccepted ||
-              ['out_for_delivery', 'confirmed', 'preparing', 'ready'].includes(i.orderStatus) && !!i.assignedDriverId ||
-              i.driverRequestStatus === 'ACCEPTED',
-            customerId: i.customerId || {
+            orderId: i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
+            status: orderStatus,
+            orderStatus,
+            isAccepted,
+            isSelectedByCustomer: i.isSelectedByCustomer,
+            serviceType: i._orderType || (isFood ? 'food' : isParcel ? 'parcel' : 'other'),
+            customerId: {
               _id: userAuth?._id || userAuth || '',
               fullName: customerFullName,
               portraitPhoto: userAuth?.portraitPhoto || '',
-              // Carry phone so OrderDetailModal can display it
               phone: userAuth?.phoneNumber || '',
               countryCode: userAuth?.countryCode || '',
               fullPhoneNumber: userAuth?.fullPhoneNumber || '',
             },
             pickup,
             drop,
+            totalAmount: i.totalAmount?.$numberDecimal ?? i.totalAmount ?? i.fare ?? i.finalPrice ?? 0,
             package: i.package || {
-              itemName: (i.items || [])
-                .map((item: any) => `${item.name} × ${item.quantity}`)
-                .join(', '),
-              weight: 0,
-              weightUnit: '',
-              description: i.notes || '',
+              itemName: (i.items || i.loadItems || i.orderDetails?.items || i.orderDetails?.loadItems || i.serviceDetails?.items || i.serviceDetails?.loadItems || [])
+                .map((item: any) => item.name ? `${item.name} × ${item.quantity || 1}` : (item.description || 'Item'))
+                .join(', ') || (isFood ? 'Food items' : 'Parcel'),
+              weight: i.weight?.value || 0,
+              weightUnit: i.weight?.unit || '',
+              description: i.notes || i.description || '',
               photos: [],
               payer: 'SENDER',
               paymentMode: i.paymentMethod || '',
             },
             distance: typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
               ? `${Number(tripDistanceKm.toFixed(2))} KM`
-              : '',
+              : (i.distance || ''),
           };
         });
       };
 
       const res = await fetchData({
         method: 'GET',
-        url: '/driver/food-orders',
+        url: '/driver/orders/unified?sourceModel=all',
         params: {
+          status: type === 'ACTIVE' ? 'active' : 'all',
           latitude: location.lat,
           longitude: location.long,
-          type,
         },
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      // When fetching ACTIVE orders, mark every returned order as accepted so
-      // the active-orders section always renders them.
       const formatted = formatOrders(res.data, type === 'ACTIVE');
       setOrders(formatted);
     } catch (error: any) {
@@ -530,7 +567,7 @@ const [syncLoading, setSyncLoading] = useState(false);
   refreshHomeRef.current = () => {
     checkIsOnline();
     fetchDashboardData();
-    fetchDriverOrders('ACTIVE');
+    fetchDriverOrders('ALL');
   };
 
   useFocusEffect(
@@ -661,10 +698,11 @@ const [syncLoading, setSyncLoading] = useState(false);
           {(() => {
             const activeOrders = orders.filter(
               o =>
-                o.orderStatus === 'out_for_delivery' ||
-                o.status === 'IN_PROGRESS' ||
                 o.isAccepted ||
-                o.driverRequestStatus === 'ACCEPTED',
+                o.driverRequestStatus === 'ACCEPTED' ||
+                ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'in_progress'].includes(
+                  String(o.orderStatus || o.status).toLowerCase(),
+                ),
             );
             if (activeOrders.length === 0) return null;
             return (
@@ -710,6 +748,80 @@ const [syncLoading, setSyncLoading] = useState(false);
                           tripStatus: item.tripStatus || 'CREATED',
                         },
                       } as never);
+                    }}
+                  />
+                ))}
+              </View>
+            );
+          })()}
+
+          {/* ── New Requests / Waiting Orders ── */}
+          {(() => {
+            const waitingOrders = orders.filter(
+              o =>
+                !o.isAccepted &&
+                o.driverRequestStatus !== 'ACCEPTED' &&
+                !['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'].includes(
+                  String(o.orderStatus || o.status).toLowerCase(),
+                ),
+            );
+            if (waitingOrders.length === 0) return null;
+            return (
+              <View style={{ marginTop: scale(20) }}>
+                {/* section header */}
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionDotWrap}>
+                    <View style={[styles.sectionDotOuter, { borderColor: '#3B82F6' }]}>
+                      <View style={[styles.sectionDotInner, { backgroundColor: '#3B82F6' }]} />
+                    </View>
+                  </View>
+                  <Text style={styles.sectionTitle}>New Requests</Text>
+                  <View style={[styles.sectionBadge, { backgroundColor: '#EFF6FF' }]}>
+                    <Text style={[styles.sectionBadgeText, { color: '#3B82F6' }]}>{waitingOrders.length}</Text>
+                  </View>
+                </View>
+
+                {waitingOrders.map(item => (
+                  <UnifiedOrderCard
+                    key={item._id}
+                    _id={item._id}
+                    _orderType={item.serviceType === 'food' ? 'food' : 'parcel'}
+                    orderNumber={item.orderId || item.orderNumber || item.loadRequestNumber}
+                    serviceType={item.serviceType || item.serviceId?.serviceType || item?.serviceId?.name}
+                    serviceName={item.serviceId?.name}
+                    status={item.orderStatus || item.status || 'pending'}
+                    createdAt={item.createdAt}
+                    pickupAddress={item.pickup?.address || 'Pickup location'}
+                    dropAddress={item.drop?.address || 'Drop location'}
+                    totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.finalPrice ?? item.estimatedPrice}
+                    currency={item.currency || 'BND'}
+                    distance={item.distance}
+                    isAccepted={item.isAccepted}
+                    isSelectedByCustomer={item.isSelectedByCustomer}
+                    driverId={item.driverId}
+                    onGoToTrip={async () => {
+                      await StorageService.setItem('tripId', item._id);
+                      navigation.navigate('RideDetails' as never, {
+                        order: {
+                          ...item,
+                          tripId: item.tripId || item._id,
+                          tripStatus: item.tripStatus || 'CREATED',
+                        },
+                      } as never);
+                    }}
+                    onPress={() => {
+                      if (item.serviceType === 'parcel' && item.status === 'quoting' && !item.isSelectedByCustomer) {
+                        setSelectedOrderForQuote(item);
+                      } else {
+                        setSelectedOrderForDetail(item);
+                        setIsDetailModalVisible(true);
+                      }
+                    }}
+                    onAccept={() => {
+                      fetchDriverOrders('ALL');
+                    }}
+                    onIgnore={() => {
+                      setOrders(prev => prev.filter(o => o._id !== item._id));
                     }}
                   />
                 ))}

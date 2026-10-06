@@ -26,6 +26,7 @@ import CustomAlert from '../components/CustomAlert';
 import { getCurrentLocation } from '../services/driverLocationTracker';
 import { DUMMY_TRIPS } from '../constants/dummyData';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import StorageService from '../utils/Storage';
 
 interface OrderUI {
   _id: string;
@@ -206,19 +207,30 @@ export default function AllOrders() {
             pickup = i.pickup || { lat: undefined, lng: undefined, address: '' };
             drop = i.drop || { lat: undefined, lng: undefined, address: '' };
           }
-          console.log(pickup ,drop)
+       
           const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
             .every(value => typeof value === 'number' && Number.isFinite(value));
           const tripDistanceKm = i.distanceKm ?? (hasCoordinates
             ? calculateDistanceKm(pickup.lat, pickup.lng, drop.lat, drop.lng)
             : undefined);
 
+          const orderStatus = i.status || i.orderStatus || 'pending';
+          const isAccepted = Boolean(
+            i.isAccepted ||
+            ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(
+              String(orderStatus).toLowerCase(),
+            )
+          );
+
           return {
             ...i,
             // Keep the Mongo ID for actions; show the readable order number.
             _id: i._id,
             orderId: i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
-            status: i.orderStatus || i.status,
+            status: orderStatus,
+            orderStatus,
+            isAccepted,
+            isSelectedByCustomer: i.isSelectedByCustomer,
             // Mark food orders explicitly so the UI renders the right card
             serviceType: i._orderType || i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.loadRequestNumber ? 'parcel' : 'other'),
             customerId: i.customerId || {
@@ -257,11 +269,11 @@ export default function AllOrders() {
       const fetchOrdersByType = (type: 'ALL' | 'ACTIVE') =>
         fetchData({
           method: 'GET',
-          url: '/driver/orders',
+          url: '/driver/orders/unified?sourceModel=all',
           params: {
             latitude: location.lat,
             longitude: location.long,
-            type,
+            status: type === 'ACTIVE' ? 'active' : 'all',
             search: query,
           },
           headers: {
@@ -375,7 +387,11 @@ export default function AllOrders() {
     (status || '').replace(/[\s-]/g, '_').toUpperCase();
 
   const activeStatuses = [
+    'ASSIGNED',
+    'CONFIRMED',
     'ACCEPTED',
+    'READY',
+    'OUT_FOR_DELIVERY',
     'IN_PROGRESS',
     'INPROGRESS',
     'START_RIDE',
@@ -399,7 +415,8 @@ export default function AllOrders() {
   const isActiveOrder = (order: OrderUI) =>
     order.isAccepted === true ||
     normalizeStatus(order.driverRequestStatus) === 'ACCEPTED' ||
-    activeStatuses.includes(normalizeStatus(order.status));
+    activeStatuses.includes(normalizeStatus(order.status)) ||
+    activeStatuses.includes(normalizeStatus(order.orderStatus));
 
   const isClosedOrder = (order: OrderUI) =>
     normalizeStatus(order.driverRequestStatus) === 'REJECTED' ||
@@ -413,6 +430,17 @@ export default function AllOrders() {
 
     return !isActiveOrder(order) && !isClosedOrder(order);
   });
+
+  const goToTrip = async (order: OrderUI) => {
+    await StorageService.setItem('tripId', order._id);
+    navigation.navigate('RideDetails' as never, {
+      order: {
+        ...order,
+        tripId: order.tripId || order._id,
+        tripStatus: order.tripStatus || 'CREATED',
+      },
+    } as never);
+  };
 
   const openOrderDetail = (order: OrderUI) => {
     setSelectedOrderForDetail(
@@ -560,10 +588,14 @@ export default function AllOrders() {
               currency={item.currency || 'BND'}
               createdAt={item.createdAt}
               assignedDriverId={item.assignedDriverId}
+              driverId={item.driverId}
+              isSelectedByCustomer={item.isSelectedByCustomer}
+              isAccepted={item.isAccepted}
               distance={item.distance}
               pickup={item.pickup}
               drop={item.drop}
               onPress={() => openOrderDetail(item)}
+              onGoToTrip={() => goToTrip(item)}
               onAccept={() => {
                 setCancelledOrderIds(prev => [...prev, item._id]);
                 setOrders(prev => prev.filter(o => o._id !== item._id));

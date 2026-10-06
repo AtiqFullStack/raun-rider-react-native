@@ -228,7 +228,7 @@ export default function RideDetailsScreen() {
   const fetchTripIdFromOrder = useCallback(async () => {
     if (!activeOrderId) return null;
     try {
-      const endpoint = isFoodOrder ? `/driver/food-orders/${activeOrderId}` : `/driver/food-orders/${activeOrderId}`;
+      const endpoint = `/driver/orders/unified/${activeOrderId}`;
       const res = await api.get(endpoint);
       const detail = res?.data?.data?.order ?? res?.data?.data ?? res?.data;
       if (detail) {

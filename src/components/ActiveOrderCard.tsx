@@ -25,6 +25,11 @@ interface ActiveOrderCardProps {
 }
 
 const STATUS_DISPLAY: Record<string, { label: string; bg: string; color: string; dot: string }> = {
+  assigned:         { label: 'Assigned',         bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
+  picked_up:        { label: 'Picked Up',        bg: '#FEF3C7', color: '#D97706', dot: '#F59E0B' },
+  in_transit:       { label: 'In Transit',       bg: '#E7F7F0', color: '#078C62', dot: '#10B981' },
+  waiting:          { label: 'Waiting Accept',   bg: '#FFF6DF', color: '#B45309', dot: '#F59E0B' },
+  pending:          { label: 'Pending',          bg: '#FFF6DF', color: '#B45309', dot: '#F59E0B' },
   confirmed:        { label: 'Confirmed',        bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
   preparing:        { label: 'Preparing',        bg: '#FFF6DF', color: '#D97706', dot: '#D97706' },
   ready:            { label: 'Ready for Pickup', bg: '#E7F7F0', color: '#078C62', dot: '#078C62' },
@@ -32,6 +37,7 @@ const STATUS_DISPLAY: Record<string, { label: string; bg: string; color: string;
   IN_PROGRESS:      { label: 'In Progress',      bg: '#E7F7F0', color: '#078C62', dot: '#22C55E' },
   ACCEPTED:         { label: 'Accepted',         bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
   accepted:         { label: 'Accepted',         bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
+  delivered:        { label: 'Delivered',        bg: '#E7F7F0', color: '#078C62', dot: '#10B981' },
 };
 const DEFAULT_STATUS = { label: 'Active', bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' };
 

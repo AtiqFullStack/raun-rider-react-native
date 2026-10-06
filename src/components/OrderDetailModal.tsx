@@ -22,6 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { AppEvents, EVENTS } from '../utils/events';
 import Toast from 'react-native-toast-message';
 import { api } from '../services/apiClient';
+import { StorageService } from '../utils/Storage';
 
 interface Props {
   visible: boolean;
@@ -32,7 +33,8 @@ interface Props {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(dateStr: string) {
+function timeAgo(dateStr?: string) {
+  if (!dateStr) return '';
   const diff = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000));
   if (diff < 60) return `${diff}s ago`;
   const m = Math.floor(diff / 60); if (m < 60) return `${m}m ago`;
@@ -49,6 +51,7 @@ const SERVICE_CONFIG: Record<string, { label: string; bg: string; color: string;
   food:   { label: 'FOOD',   bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
   FOOD:   { label: 'FOOD',   bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
   CAB:    { label: 'CAB',    bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
+  cab:    { label: 'CAB',    bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
   parcel: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
   PARCEL: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
 };
@@ -56,7 +59,7 @@ const DEFAULT_SVC = { label: 'ORDER', bg: '#F3F4F6', color: '#374151', dot: '#37
 
 // ── InfoRow ───────────────────────────────────────────────────────────────────
 
-function InfoRow({ label, value }: { label: string; value?: string }) {
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
     <View style={infoRowStyles.row}>
@@ -90,7 +93,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 const sectionStyles = StyleSheet.create({
   wrap: {
-    marginTop: verticalScale(16),
+    marginTop: verticalScale(14),
     backgroundColor: '#FAFAFA',
     borderRadius: scale(12),
     padding: scale(14),
@@ -118,38 +121,14 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
   const [accepting, setAccepting] = useState(false);
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
-  const [quoteSent, setQuoteSent] = useState(order.isRequested || sentQuotes.includes(order._id));
-
-  const isCab = order.serviceType === 'CAB';
-  const isFoodOrder = 
-    order.orderStatus === 'ready' ||
-    order.serviceType === 'food' || 
-    order.serviceType === 'FOOD' ||
-    order.serviceId?.serviceType === 'food' ||
-    order.serviceId?.name?.toLowerCase().includes('food');
-  
-  const isParcelOrder = 
-    order.serviceType === 'parcel' ||
-    order.serviceType === 'PARCEL' ||
-    order._orderType === 'parcel' ||
-    order.loadRequestNumber ||
-    order.sender !== undefined;
-
-  const svc = SERVICE_CONFIG[order.serviceId?.serviceType || order.serviceId?.name || (isFoodOrder ? 'food' : '')] || DEFAULT_SVC;
-
-  const getStatus = () => {
-    if (order.isAccepted) return 'ACCEPTED';
-    if (order.isRequested) return 'BOOKING_REQUESTED';
-    if (quoteSent || sentQuotes.includes(order._id)) return 'QUOTE_SENT';
-    return 'PENDING';
-  };
+  const [quoteSent, setQuoteSent] = useState(order?.isRequested || sentQuotes.includes(order?._id));
 
   useEffect(() => {
-    if (visible && order) {
+    if (visible && order?._id) {
       fetchDetails();
       setQuoteSent(order.isRequested || sentQuotes.includes(order._id));
     }
-  }, [visible, order]);
+  }, [visible, order?._id]);
 
   useEffect(() => {
     const subscription = AppEvents.addListener(EVENTS.REFRESH_ORDERS, fetchDetails);
@@ -157,28 +136,96 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
   }, []);
 
   const fetchDetails = async () => {
-    if (isFoodOrder) return; // food orders don't have /orderDetail endpoint
+    if (!order?._id) return;
     try {
       setLoading(true);
-      const res = await fetchData({
-        method: 'GET',
-        url: `/user/order/orderDetail/${order._id}`,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setOrderDetail(res.data);
-    } catch (error) {
-      console.log('OrderDetailModal fetch error', error);
+      const res = await api.get(`/driver/orders/unified/${order._id}`);
+      if (res.data?.data?.order || res.data?.order) {
+        setOrderDetail(res.data?.data?.order || res.data?.order);
+      }
+    } catch (error: any) {
+      // Fallback for legacy endpoints
+      try {
+        const res = await fetchData({
+          method: 'GET',
+          url: `/user/order/orderDetail/${order._id}`,
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res?.data) {
+          setOrderDetail(res.data);
+        }
+      } catch (err) {
+        // Ignore fallback error
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  if (!order) return null;
+
+  // Merge prop order and fetched orderDetail
+  const merged: any = {
+    ...order,
+    ...(orderDetail || {}),
+    orderDetails: orderDetail?.orderDetails || order?.orderDetails,
+  };
+
+  const isCab = merged.serviceType === 'CAB' || merged.serviceType === 'cab';
+  const isFoodOrder =
+    merged.sourceModel === 'FoodOrder' ||
+    merged._orderType === 'food' ||
+    merged.serviceType === 'food' ||
+    merged.serviceType === 'FOOD' ||
+    merged.orderStatus === 'ready' ||
+    merged.serviceId?.serviceType === 'food' ||
+    merged.serviceId?.name?.toLowerCase().includes('food') ||
+    !!merged.restaurantId ||
+    !!merged.orderDetails?.restaurantId;
+
+  const isParcelOrder =
+    !isFoodOrder &&
+    !isCab &&
+    (merged.sourceModel === 'LoadRequest' ||
+      merged._orderType === 'parcel' ||
+      merged.serviceType === 'parcel' ||
+      merged.serviceType === 'PARCEL' ||
+      merged.serviceId?.serviceType === 'parcel' ||
+      merged.serviceId?.name?.toLowerCase().includes('parcel') ||
+      !!merged.loadRequestNumber ||
+      merged.sender !== undefined ||
+      merged.loadItems !== undefined ||
+      merged.orderDetails?.loadItems !== undefined);
+
+  const rawStatus = String(merged.orderStatus || merged.status || 'pending').toLowerCase();
+  const isActive =
+    merged.isAccepted ||
+    ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(rawStatus);
+
+  const isSelectedByCustomer =
+    merged.isSelectedByCustomer ||
+    ((rawStatus === 'waiting' || rawStatus === 'pending') && !!merged.driverId);
+
+  const svcKey = isFoodOrder ? 'food' : isCab ? 'CAB' : isParcelOrder ? 'parcel' : (merged.serviceId?.serviceType || merged.serviceId?.name || '');
+  const svc = SERVICE_CONFIG[svcKey] || SERVICE_CONFIG[svcKey.toLowerCase()] || DEFAULT_SVC;
+
   const handleAcceptFood = async () => {
     try {
       setAccepting(true);
-      await api.patch(`/driver/food-orders/${order._id}/accept`);
-      Toast.show({ type: 'success', text1: 'Order accepted!' });
+      await api.post(`/driver/orders/unified/${order._id}/accept`);
+      Toast.show({ type: 'success', text1: 'Order accepted successfully!' });
+      AppEvents.emit(EVENTS.REFRESH_ORDERS);
       onClose();
+      await StorageService.setItem('tripId', order._id);
+      navigation.navigate('RideDetails', {
+        order: {
+          ...merged,
+          status: 'assigned',
+          isAccepted: true,
+          tripId: merged.tripId || merged._id,
+          tripStatus: 'ASSIGNED',
+        },
+      });
     } catch (error: any) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to accept order';
       Toast.show({ type: 'error', text1: msg });
@@ -202,7 +249,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
         response.data?.tripId;
       onClose();
       if (tripId) {
-        navigation.navigate('RideDetails', { order: { ...order, tripId, tripStatus: 'CREATED' } });
+        navigation.navigate('RideDetails', { order: { ...merged, tripId, tripStatus: 'CREATED' } });
       }
     } catch (e: any) {
       Toast.show({ type: 'error', text1: e?.message || 'Failed to accept' });
@@ -211,18 +258,109 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     }
   };
 
-  // ── price to show ─────────────────────────────────────────────────────────
-  const displayAmount = order.totalAmount?.$numberDecimal ?? order.totalAmount
-    ?? orderDetail?.finalPrice ?? orderDetail?.myQuote?.price
-    ?? order.myQuote?.price ?? order.price?.totalFare;
+  const handleGoToTrip = async () => {
+    onClose();
+    await StorageService.setItem('tripId', merged._id);
+    navigation.navigate('RideDetails', {
+      order: {
+        ...merged,
+        tripId: merged.tripId || merged._id,
+        tripStatus: merged.tripStatus || 'CREATED',
+      },
+    });
+  };
 
-  const status = getStatus();
+  // Pricing
+  const displayAmount =
+    merged.totalAmount?.$numberDecimal ??
+    merged.totalAmount ??
+    merged.finalPrice ??
+    merged.estimatedPrice ??
+    merged.myQuote?.price ??
+    merged.orderDetails?.totalAmount ??
+    merged.orderDetails?.fare ??
+    merged.orderDetails?.price?.totalFare ??
+    merged.price?.totalFare;
+
+  // Addresses
+  const pickupAddress =
+    merged.pickup?.address ||
+    merged.pickupLocation?.address ||
+    merged.restaurantId?.location?.address ||
+    merged.restaurantId?.address ||
+    merged.orderDetails?.pickupLocation?.address ||
+    '—';
+
+  const dropAddress =
+    merged.drop?.address ||
+    merged.dropoffLocation?.address ||
+    merged.deliveryAddress?.formattedAddress ||
+    merged.deliveryAddress?.street ||
+    merged.orderDetails?.dropoffLocation?.address ||
+    merged.orderDetails?.deliveryAddress?.formattedAddress ||
+    '—';
+
+  const distanceText =
+    merged.distance ||
+    (merged.orderDetails?.distance ? `${merged.orderDetails.distance} km` : undefined) ||
+    (merged.price?.distanceKm ? `${merged.price.distanceKm} km` : undefined);
+
+  // Customer info
+  const customerName =
+    merged.customerId?.fullName ||
+    merged.userAuthId?.fullName ||
+    merged.orderDetails?.userAuthId?.fullName ||
+    merged.sender?.name ||
+    merged.orderDetails?.sender?.name ||
+    'Customer';
+
+  const customerPhone =
+    merged.customerId?.phoneNumber ||
+    merged.customerId?.fullPhoneNumber ||
+    merged.userAuthId?.phoneNumber ||
+    merged.userAuthId?.fullPhoneNumber ||
+    merged.deliveryAddress?.contactPersonNumber ||
+    merged.orderDetails?.deliveryAddress?.contactPersonNumber ||
+    (merged as any).customerPhone;
+
+  const customerPhoto =
+    merged.customerId?.portraitPhoto ||
+    merged.userAuthId?.portraitPhoto ||
+    merged.orderDetails?.userAuthId?.portraitPhoto;
+
+  // Restaurant info
+  const restName =
+    merged.restaurantId?.restaurantName ||
+    merged.restaurantId?.name ||
+    merged.orderDetails?.restaurantId?.restaurantName ||
+    merged.orderDetails?.restaurantId?.name;
+
+  const restPhone =
+    merged.restaurantId?.phoneNumber ||
+    merged.restaurantId?.restaurantPhone ||
+    merged.orderDetails?.restaurantId?.phoneNumber ||
+    merged.orderDetails?.restaurantId?.restaurantPhone;
+
+  // Food Items
+  const foodItems: any[] =
+    merged.items ||
+    merged.orderItems ||
+    merged.orderDetails?.items ||
+    merged.orderDetails?.orderItems ||
+    [];
+
+  // Photos
+  const photos: any[] =
+    merged.package?.photos ||
+    merged.photos ||
+    merged.orderDetails?.package?.photos ||
+    merged.orderDetails?.photos ||
+    [];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
-
           {/* ── drag handle ── */}
           <View style={styles.handle} />
 
@@ -234,10 +372,14 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 <Text style={[styles.serviceLabel, { color: svc.color }]}>{svc.label}</Text>
               </View>
               <Text style={styles.orderId} numberOfLines={1}>
-                {order.orderId || order._id}
+                {merged.orderNumber || merged.orderId || merged.loadRequestNumber || merged._id}
               </Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Text style={styles.closeX}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -246,46 +388,62 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {/* ── customer row (only show if food accepted or parcel converted) ── */}
-            {(isFoodOrder && order.isAccepted) || (isParcelOrder && order.status !== 'submitted') ? (
-              <>
-                <View style={styles.customerRow}>
-                  <View style={styles.avatarWrap}>
-                    {order.customerId?.portraitPhoto ? (
-                      <Image
-                        source={{ uri: `${IMAGE_URL}/${order.customerId.portraitPhoto}` }}
-                        style={styles.avatar}
-                      />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarFallback]}>
-                        <Text style={styles.avatarInitial}>
-                          {(order.customerId?.fullName || '?')[0].toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.onlineDot} />
-                  </View>
-                  <View style={styles.customerInfo}>
-                    <Text style={styles.customerName} numberOfLines={1}>
-                      {order.customerId?.fullName || '—'}
+            {/* ── Customer Banner ── */}
+            <View style={styles.customerRow}>
+              <View style={styles.avatarWrap}>
+                {customerPhoto ? (
+                  <Image
+                    source={{ uri: `${IMAGE_URL}/${customerPhoto}` }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarFallback]}>
+                    <Text style={styles.avatarInitial}>
+                      {(customerName || '?')[0].toUpperCase()}
                     </Text>
-                    <Text style={styles.timeAgo}>{timeAgo(order.createdAt)}</Text>
                   </View>
-                  {displayAmount !== undefined && displayAmount !== null && (
-                    <View style={styles.amountBadge}>
-                      <Text style={styles.amountText}>
-                        {formatMoney(displayAmount, order.currency)}
-                      </Text>
-                    </View>
-                  )}
+                )}
+                <View style={styles.onlineDot} />
+              </View>
+              <View style={styles.customerInfo}>
+                <Text style={styles.customerName} numberOfLines={1}>
+                  {customerName}
+                </Text>
+                <Text style={styles.timeAgo}>
+                  {timeAgo(merged.createdAt)} • <Text style={{ color: Colors.primary, textTransform: 'uppercase' }}>{rawStatus}</Text>
+                </Text>
+              </View>
+              {displayAmount !== undefined && displayAmount !== null && (
+                <View style={styles.amountBadge}>
+                  <Text style={styles.amountText}>
+                    {formatMoney(displayAmount, merged.currency)}
+                  </Text>
                 </View>
+              )}
+            </View>
 
-                {/* ── divider ── */}
-                <View style={styles.divider} />
-              </>
-            ) : null}
+            {/* ── Customer Selected You Alert ── */}
+            {isSelectedByCustomer && !isActive && (
+              <View style={styles.selectedAlertBox}>
+                <Text style={styles.selectedAlertTitle}>🎉 Customer Selected You!</Text>
+                <Text style={styles.selectedAlertSub}>
+                  The customer accepted your quote. Tap Accept below to confirm and start the trip.
+                </Text>
+              </View>
+            )}
 
-            {/* ── route ── */}
+            {/* ── divider ── */}
+            <View style={styles.divider} />
+
+            {/* ── Restaurant Details (Food) ── */}
+            {isFoodOrder && !!restName && (
+              <Section title="RESTAURANT">
+                <InfoRow label="Name" value={restName} />
+                {!!restPhone && <InfoRow label="Phone" value={restPhone} />}
+              </Section>
+            )}
+
+            {/* ── Route ── */}
             <Section title="ROUTE">
               <View style={styles.routeRow}>
                 <View style={styles.routeIconCol}>
@@ -295,132 +453,181 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 </View>
                 <View style={styles.routeTexts}>
                   <Text style={styles.routeLabel}>PICKUP</Text>
-                  <Text style={styles.routeAddress}>
-                    {order.pickup?.address || order.pickupLocation?.address || '—'}
-                  </Text>
+                  <Text style={styles.routeAddress}>{pickupAddress}</Text>
                   <View style={{ height: verticalScale(12) }} />
                   <Text style={styles.routeLabel}>DROP OFF</Text>
-                  <Text style={styles.routeAddress}>
-                    {order.drop?.address || order.dropoffLocation?.address || '—'}
-                  </Text>
+                  <Text style={styles.routeAddress}>{dropAddress}</Text>
                 </View>
               </View>
-              {!!order.distance && (
+              {!!distanceText && (
                 <View style={styles.distanceChip}>
-                  <Text style={styles.distanceText}>📍 {order.distance}</Text>
+                  <Text style={styles.distanceText}>📍 {distanceText}</Text>
                 </View>
               )}
             </Section>
 
-            {/* ── order info ── */}
+            {/* ── Loading indicator ── */}
             {loading ? (
               <View style={styles.loadingWrap}>
                 <ActivityIndicator color={Colors.primary} />
-                <Text style={styles.loadingText}>Loading details…</Text>
+                <Text style={styles.loadingText}>Fetching details…</Text>
               </View>
-            ) : (
-              <>
-                {/* 🍕 Food order items */}
-                {isFoodOrder && order.items && order.items.length > 0 && (
-                  <Section title="ORDER ITEMS">
-                    {order.items.map((item: any, i: number) => (
-                      <Text key={i} style={styles.itemSummary}>
-                        {item.quantity}x {item.name}
+            ) : null}
+
+            {/* ── Food Items ── */}
+            {isFoodOrder && foodItems.length > 0 && (
+              <Section title={`ORDER ITEMS (${foodItems.length})`}>
+                {foodItems.map((item: any, i: number) => {
+                  const qty = item.quantity || 1;
+                  const name = item.name || item.menuItemId?.name || item.itemName || 'Item';
+                  const price = item.price?.$numberDecimal ?? item.price;
+                  return (
+                    <View key={i} style={styles.itemRow}>
+                      <View style={styles.itemBullet}>
+                        <Text style={styles.itemBulletText}>{qty}x</Text>
+                      </View>
+                      <Text style={styles.itemSummary} numberOfLines={2}>
+                        {name}
                       </Text>
-                    ))}
-                  </Section>
-                )}
+                      {price ? (
+                        <Text style={styles.itemPriceText}>
+                          {formatMoney(Number(price) * Number(qty), merged.currency)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </Section>
+            )}
 
-                {/* 🍕 Food order: customer phone when active */}
-                {isFoodOrder && order.isAccepted && (order as any).customerPhone && (
-                  <Section title="CUSTOMER">
-                    <InfoRow label="Phone" value={(order as any).customerPhone} />
-                  </Section>
+            {/* ── Contact Details ── */}
+            {isFoodOrder && (
+              <Section title="CUSTOMER CONTACT">
+                <InfoRow label="Name" value={customerName} />
+                {!!customerPhone && <InfoRow label="Phone" value={customerPhone} />}
+                {!!merged.deliveryAddress?.notes && (
+                  <InfoRow label="Note" value={merged.deliveryAddress.notes} />
                 )}
+              </Section>
+            )}
 
-                {/* 🚕 CAB: passenger info */}
-                {isCab && (
-                  <Section title="PASSENGER">
-                    <InfoRow label="Name" value={order.passenger?.name || orderDetail?.passenger?.name} />
-                    <InfoRow
-                      label="Phone"
-                      value={
-                        order.passenger
-                          ? `${order.passenger.countryCode} ${order.passenger.phone}`
-                          : undefined
-                      }
-                    />
-                    {order.price && (
-                      <InfoRow label="Distance" value={`${order.price.distanceKm} km`} />
-                    )}
-                  </Section>
-                )}
+            {/* ── Parcel Contacts ── */}
+            {isParcelOrder && (
+              <Section title="CONTACTS">
+                <InfoRow
+                  label="Sender"
+                  value={merged.sender?.name || merged.orderDetails?.sender?.name || merged.pickupLocation?.name || customerName}
+                />
+                <InfoRow
+                  label="Sender Phone"
+                  value={merged.sender?.phone || merged.orderDetails?.sender?.phone || merged.pickupLocation?.phone || customerPhone}
+                />
+                <InfoRow
+                  label="Receiver"
+                  value={merged.receiver?.name || merged.orderDetails?.receiver?.name || merged.dropoffLocation?.name}
+                />
+                <InfoRow
+                  label="Receiver Phone"
+                  value={merged.receiver?.phone || merged.orderDetails?.receiver?.phone || merged.dropoffLocation?.phone}
+                />
+              </Section>
+            )}
 
-                {/* 📦 Parcel: sender + receiver (only if converted to order or accepted) */}
-                {isParcelOrder && order.status !== 'submitted' && (
-                  <Section title="CONTACTS">
-                    <InfoRow label="Sender" value={order.sender?.name || orderDetail?.sender?.name || '—'} />
-                    <InfoRow label="Sender Phone" value={order.sender?.phone || orderDetail?.sender?.phone} />
-                    <InfoRow label="Receiver" value={order.receiver?.name || orderDetail?.receiver?.name || '—'} />
-                    <InfoRow label="Receiver Phone" value={order.receiver?.phone || orderDetail?.receiver?.phone} />
-                  </Section>
-                )}
+            {/* ── Parcel Package Details ── */}
+            {isParcelOrder && (
+              <Section title="PACKAGE DETAILS">
+                <InfoRow
+                  label="Items"
+                  value={
+                    merged.loadItems && merged.loadItems.length > 0
+                      ? `${merged.loadItems.length}x item${merged.loadItems.length > 1 ? 's' : ''}`
+                      : merged.package?.itemName || merged.orderDetails?.package?.itemName
+                  }
+                />
+                <InfoRow
+                  label="Weight"
+                  value={
+                    merged.weight?.value
+                      ? `${merged.weight.value} ${merged.weight.unit}`
+                      : merged.package?.weight
+                      ? `${merged.package.weight} ${merged.package.weightUnit || 'kg'}`
+                      : merged.orderDetails?.weight?.value
+                      ? `${merged.orderDetails.weight.value} ${merged.orderDetails.weight.unit}`
+                      : undefined
+                  }
+                />
+                <InfoRow
+                  label="Type"
+                  value={merged.typeOfProduct || merged.orderDetails?.typeOfProduct || merged.package?.category}
+                />
+                <InfoRow
+                  label="Description"
+                  value={
+                    merged.loadDescription ||
+                    merged.package?.description ||
+                    merged.orderDetails?.loadDescription ||
+                    merged.orderDetails?.package?.description
+                  }
+                />
+                <InfoRow
+                  label="Payment"
+                  value={merged.paymentMethod || merged.orderDetails?.paymentMethod || merged.package?.paymentMode}
+                />
+                <InfoRow
+                  label="Payer"
+                  value={merged.payerType || merged.orderDetails?.payerType}
+                />
+              </Section>
+            )}
 
-                {/* 📦 Parcel: package details */}
-                {isParcelOrder && (
-                  <Section title="PACKAGE">
-                    <InfoRow 
-                      label="Items" 
-                      value={
-                        order.loadItems && order.loadItems.length > 0
-                          ? `${order.loadItems.length}x item${order.loadItems.length > 1 ? 's' : ''}`
-                          : order.package?.itemName
-                      } 
-                    />
-                    <InfoRow
-                      label="Weight"
-                      value={
-                        order.weight?.value 
-                          ? `${order.weight.value} ${order.weight.unit}` 
-                          : order.package?.weight ? `${order.package.weight} ${order.package.weightUnit}` : undefined
-                      }
-                    />
-                    <InfoRow label="Type" value={order.typeOfProduct} />
-                    <InfoRow label="Description" value={order.loadDescription || order.package?.description} />
-                    <InfoRow label="Payment" value={order.paymentMethod || order.package?.paymentMode} />
-                    <InfoRow label="Payer" value={order.payerType} />
-                  </Section>
+            {/* ── CAB Passenger ── */}
+            {isCab && (
+              <Section title="PASSENGER">
+                <InfoRow label="Name" value={merged.passenger?.name || customerName} />
+                <InfoRow
+                  label="Phone"
+                  value={
+                    merged.passenger?.phone
+                      ? `${merged.passenger.countryCode || ''} ${merged.passenger.phone}`
+                      : customerPhone
+                  }
+                />
+                {!!merged.price?.distanceKm && (
+                  <InfoRow label="Distance" value={`${merged.price.distanceKm} km`} />
                 )}
+              </Section>
+            )}
 
-                {/* Quote details */}
-                {status === 'BOOKING_REQUESTED' && (
-                  <Section title="YOUR QUOTE">
-                    <InfoRow
-                      label="Price"
-                      value={orderDetail?.myQuote?.price ? formatMoney(orderDetail.myQuote.price, order.currency) : undefined}
-                    />
-                    <InfoRow
-                      label="ETA"
-                      value={orderDetail?.myQuote?.eta ? `${orderDetail.myQuote.eta} min` : undefined}
-                    />
-                  </Section>
+            {/* ── Driver Quote ── */}
+            {merged.myQuote && (
+              <Section title="YOUR QUOTE">
+                <InfoRow
+                  label="Quoted Price"
+                  value={formatMoney(merged.myQuote.price, merged.currency)}
+                />
+                {!!merged.myQuote.eta && (
+                  <InfoRow label="ETA" value={`${merged.myQuote.eta} min`} />
                 )}
+              </Section>
+            )}
 
-                {/* 📷 Package photos */}
-                {isParcelOrder && orderDetail?.package?.photos?.length > 0 && (
-                  <Section title="PHOTOS">
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: scale(4) }}>
-                      {orderDetail.package.photos.map((p: any, i: number) => (
-                        <Image
-                          key={i}
-                          source={{ uri: `${IMAGE_URL}/${p.url}` }}
-                          style={styles.photo}
-                        />
-                      ))}
-                    </ScrollView>
-                  </Section>
-                )}
-              </>
+            {/* ── Photos ── */}
+            {photos.length > 0 && (
+              <Section title="PHOTOS">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: scale(4) }}>
+                  {photos.map((p: any, i: number) => {
+                    const uri = p.url ? `${IMAGE_URL}/${p.url}` : typeof p === 'string' ? `${IMAGE_URL}/${p}` : null;
+                    if (!uri) return null;
+                    return (
+                      <Image
+                        key={i}
+                        source={{ uri }}
+                        style={styles.photo}
+                      />
+                    );
+                  })}
+                </ScrollView>
+              </Section>
             )}
 
             {/* ── spacer so actions don't cover content ── */}
@@ -431,12 +638,33 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
           <View style={styles.actionBar}>
             <TouchableOpacity style={styles.ignoreBtn} onPress={onClose} activeOpacity={0.7}>
               <Text style={styles.ignoreText}>
-                {status === 'ACCEPTED' ? 'Close' : isCab ? 'Ignore' : 'Cancel'}
+                {isActive ? 'Close' : 'Cancel'}
               </Text>
             </TouchableOpacity>
 
-            {/* Food: Accept */}
-            {isFoodOrder && status === 'PENDING' && (
+            {/* Active order: Go to Trip */}
+            {isActive ? (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleGoToTrip}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryBtnText}>Go to Trip 🚀</Text>
+              </TouchableOpacity>
+            ) : isSelectedByCustomer ? (
+              /* Customer selected this driver: Accept */
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: '#16A34A' }, accepting && { opacity: 0.7 }]}
+                onPress={handleAcceptFood}
+                disabled={accepting}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {accepting ? 'Accepting…' : 'Accept Order'}
+                </Text>
+              </TouchableOpacity>
+            ) : isFoodOrder ? (
+              /* Food Order: Direct Accept */
               <TouchableOpacity
                 style={[styles.primaryBtn, accepting && { opacity: 0.7 }]}
                 onPress={handleAcceptFood}
@@ -447,10 +675,8 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                   {accepting ? 'Accepting…' : 'Accept Order'}
                 </Text>
               </TouchableOpacity>
-            )}
-
-            {/* CAB: Accept */}
-            {isCab && status === 'PENDING' && (
+            ) : isCab ? (
+              /* CAB: Accept */
               <TouchableOpacity
                 style={[styles.primaryBtn, accepting && { opacity: 0.7 }]}
                 onPress={handleAcceptCab}
@@ -461,39 +687,22 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                   {accepting ? 'Accepting…' : 'Accept Ride'}
                 </Text>
               </TouchableOpacity>
-            )}
-
-            {/* Parcel: Send Quote */}
-            {!isCab && !isFoodOrder && status === 'PENDING' && !quoteSent && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => setShowQuoteModal(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.primaryBtnText}>Send Quote</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Accepted: See Ride */}
-            {status === 'ACCEPTED' && (
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => {
-                  onClose();
-                  navigation.navigate('RideDetails', {
-                    order: {
-                      ...order,
-                      tripId: orderDetail?.tripId,
-                      sender: orderDetail?.sender,
-                      tripStatus: orderDetail?.tripStatus ?? 'CREATED',
-                    },
-                  });
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.primaryBtnText}>See Ride</Text>
-              </TouchableOpacity>
-            )}
+            ) : isParcelOrder ? (
+              /* Parcel: Send Quote */
+              quoteSent || sentQuotes.includes(order._id) ? (
+                <View style={[styles.primaryBtn, { backgroundColor: '#9CA3AF' }]}>
+                  <Text style={styles.primaryBtnText}>Quote Sent ✓</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={() => setShowQuoteModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.primaryBtnText}>Send Quote</Text>
+                </TouchableOpacity>
+              )
+            ) : null}
           </View>
         </View>
       </View>
@@ -504,12 +713,12 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
           onClose={() => setShowQuoteModal(false)}
           orderMongoId={order._id}
           orderDetails={{
-            distance: order.distance,
-            weight: order.package?.weight,
-            itemName: order.package?.itemName,
-            weightUnit: order.package?.weightUnit,
+            distance: merged.distance,
+            weight: merged.weight?.value || merged.package?.weight,
+            itemName: merged.package?.itemName || merged.loadItems?.[0]?.name,
+            weightUnit: merged.weight?.unit || merged.package?.weightUnit,
           }}
-          defaultPrice={order.estimatedPrice}
+          defaultPrice={displayAmount}
           alreadySent={quoteSent || sentQuotes.includes(order._id)}
           onQuoteSuccess={(orderId) => {
             setQuoteSent(true);
@@ -597,9 +806,9 @@ const styles = StyleSheet.create({
   },
   avatarWrap: { position: 'relative' },
   avatar: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
     backgroundColor: '#E5E7EB',
   },
   avatarFallback: {
@@ -608,7 +817,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '22',
   },
   avatarInitial: {
-    fontSize: fontScale(20),
+    fontSize: fontScale(18),
     fontFamily: 'Rubik-Bold',
     color: Colors.primary,
   },
@@ -616,16 +825,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 1,
     right: 1,
-    width: 12,
-    height: 12,
+    width: 11,
+    height: 11,
     borderRadius: 6,
     backgroundColor: '#22C55E',
     borderWidth: 2,
     borderColor: Colors.white,
   },
   customerInfo: { flex: 1 },
-  customerName: { fontSize: fontScale(16), fontFamily: 'Rubik-SemiBold', color: '#111827' },
-  timeAgo: { fontSize: fontScale(12), fontFamily: 'Rubik-Regular', color: '#9CA3AF', marginTop: 2 },
+  customerName: { fontSize: fontScale(15), fontFamily: 'Rubik-SemiBold', color: '#111827' },
+  timeAgo: { fontSize: fontScale(11), fontFamily: 'Rubik-Regular', color: '#9CA3AF', marginTop: 2 },
   amountBadge: {
     backgroundColor: Colors.lightgreen || '#F0FDF4',
     borderRadius: scale(10),
@@ -636,7 +845,27 @@ const styles = StyleSheet.create({
   },
   amountText: { fontSize: fontScale(13), fontFamily: 'Rubik-Bold', color: Colors.green || '#15803D' },
 
-  divider: { height: 1, backgroundColor: '#F3F4F6', marginTop: verticalScale(14) },
+  selectedAlertBox: {
+    marginTop: verticalScale(12),
+    backgroundColor: '#ECFDF5',
+    borderColor: '#86EFAC',
+    borderWidth: 1,
+    borderRadius: scale(10),
+    padding: scale(12),
+  },
+  selectedAlertTitle: {
+    fontSize: fontScale(13),
+    fontFamily: 'Rubik-Bold',
+    color: '#15803D',
+    marginBottom: 2,
+  },
+  selectedAlertSub: {
+    fontSize: fontScale(11),
+    fontFamily: 'Rubik-Regular',
+    color: '#166534',
+  },
+
+  divider: { height: 1, backgroundColor: '#F3F4F6', marginTop: verticalScale(12) },
 
   // ── route ────────────────────────────────────────────────────────────────
   routeRow: { flexDirection: 'row', gap: scale(12) },
@@ -668,21 +897,48 @@ const styles = StyleSheet.create({
   },
   distanceText: { fontSize: fontScale(12), fontFamily: 'Rubik-SemiBold', color: '#374151' },
 
-  // ── item summary (food) ──────────────────────────────────────────────────
-  itemSummary: { fontSize: fontScale(13), fontFamily: 'Rubik-Medium', color: '#374151' },
+  // ── items summary ────────────────────────────────────────────────────────
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: verticalScale(4),
+    gap: scale(8),
+  },
+  itemBullet: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: scale(6),
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+  },
+  itemBulletText: {
+    fontSize: fontScale(11),
+    fontFamily: 'Rubik-Bold',
+    color: '#374151',
+  },
+  itemSummary: {
+    flex: 1,
+    fontSize: fontScale(13),
+    fontFamily: 'Rubik-Medium',
+    color: '#374151',
+  },
+  itemPriceText: {
+    fontSize: fontScale(12),
+    fontFamily: 'Rubik-SemiBold',
+    color: '#4B5563',
+  },
 
   // ── loading ──────────────────────────────────────────────────────────────
   loadingWrap: {
     alignItems: 'center',
-    paddingVertical: verticalScale(24),
+    paddingVertical: verticalScale(16),
     gap: scale(8),
   },
-  loadingText: { fontSize: fontScale(13), fontFamily: 'Rubik-Regular', color: '#9CA3AF' },
+  loadingText: { fontSize: fontScale(12), fontFamily: 'Rubik-Regular', color: '#9CA3AF' },
 
   // ── photos ───────────────────────────────────────────────────────────────
   photo: {
-    width: scale(90),
-    height: scale(90),
+    width: scale(85),
+    height: scale(85),
     borderRadius: scale(10),
     marginRight: scale(10),
     backgroundColor: '#F3F4F6',
@@ -699,7 +955,7 @@ const styles = StyleSheet.create({
   },
   ignoreBtn: {
     flex: 1,
-    height: scale(50),
+    height: scale(48),
     borderRadius: scale(14),
     justifyContent: 'center',
     alignItems: 'center',
@@ -710,7 +966,7 @@ const styles = StyleSheet.create({
   ignoreText: { fontSize: fontScale(14), fontFamily: 'Rubik-Medium', color: '#6B7280' },
   primaryBtn: {
     flex: 2,
-    height: scale(50),
+    height: scale(48),
     borderRadius: scale(14),
     justifyContent: 'center',
     alignItems: 'center',

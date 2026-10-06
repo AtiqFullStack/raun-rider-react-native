@@ -1,9 +1,9 @@
 // export const BASE_URL = 'https://v28lskqk-1111.inc1.devtunnels.ms/api';
 // export const BASE_URL = 'https://raunbn.com/backend/api';   
-export const BASE_URL = 'https://bf46-2406-b400-75-360e-c559-2d4a-44c5-a271.ngrok-free.app/api';
+export const BASE_URL = 'https://60e2-2406-b400-75-a80f-89a0-572d-534f-ee62.ngrok-free.app/api';
 
 
-export const SOCKET_URL='https://socket.raunbn.com'
+export const SOCKET_URL = 'https://60e2-2406-b400-75-a80f-89a0-572d-534f-ee62.ngrok-free.app'
 // export const SOCKET_URL='https://v28lskqk-7001.inc1.devtunnels.ms'
 export const IMAGE_URL = "https://raunbn.com/backend"
 

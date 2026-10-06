@@ -80,7 +80,7 @@ export default function NewOrderCard({
     if (!orderMongoId) { Toast.show({ type: 'error', text1: 'Order ID missing' }); return; }
     try {
       setActionLoading('accept');
-      await api.patch(`/driver/food-orders/${orderMongoId}/accept`);
+      await api.post(`/driver/orders/unified/${orderMongoId}/accept`);
       Toast.show({ type: 'success', text1: 'Order accepted!' });
       onAccept?.();
     } catch (error: any) {
@@ -95,7 +95,7 @@ export default function NewOrderCard({
     if (!orderMongoId) { onIgnore?.(); return; }
     try {
       setActionLoading('ignore');
-      await api.patch(`/driver/food-orders/${orderMongoId}/reject`);
+      await api.post(`/driver/orders/unified/${orderMongoId}/reject`, { reason: 'Driver skipped order' });
       onIgnore?.();
     } catch {
       // silently remove from list even if reject fails

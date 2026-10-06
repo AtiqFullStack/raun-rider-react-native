@@ -44,62 +44,65 @@ export const useDriverFoodOrderService = () => {
     }
   }, []);
 
-  // GET /api/driver/food-orders?latitude=&longitude=&type=ALL
+  // GET /api/driver/orders/unified?latitude=&longitude=&sourceModel=all
   const getOrders = useCallback(
     (params: GetOrdersParams) => {
       const query = new URLSearchParams({
+        sourceModel: 'all',
+        status: params.type === 'ACTIVE' ? 'active' : 'all',
         latitude: String(params.latitude),
         longitude: String(params.longitude),
-        type: params.type ?? 'ALL',
         ...(params.radiusKm !== undefined && { radiusKm: String(params.radiusKm) }),
         ...(params.page !== undefined && { page: String(params.page) }),
         ...(params.limit !== undefined && { limit: String(params.limit) }),
       }).toString();
-      return request(() => api.get(`/api/driver/food-orders?${query}`));
+      return request(() => api.get(`/driver/orders/unified?${query}`));
     },
     [request],
   );
 
-  // GET /api/driver/food-orders/:orderId
+  // GET /api/driver/orders/unified/:orderId
   const getOrderById = useCallback(
     (orderId: string) =>
-      request(() => api.get(`/driver/food-orders/${orderId}`)),
+      request(() => api.get(`/driver/orders/unified/${orderId}`)),
     [request],
   );
 
-  // PATCH /api/driver/food-orders/:orderId/accept
+  // POST /api/driver/orders/unified/:orderId/accept
   const acceptOrder = useCallback(
     (orderId: string) =>
-      request(() => api.patch(`/driver/food-orders/${orderId}/accept`)),
+      request(() => api.post(`/driver/orders/unified/${orderId}/accept`)),
     [request],
   );
 
-  // PATCH /api/driver/food-orders/:orderId/reject
+  // POST /api/driver/orders/unified/:orderId/reject
   const rejectOrder = useCallback(
     (orderId: string, rejectionReason = '') =>
-      request(() => api.patch(`/driver/food-orders/${orderId}/reject`, { rejectionReason })),
+      request(() => api.post(`/driver/orders/unified/${orderId}/reject`, { reason: rejectionReason })),
     [request],
   );
 
-  // PATCH /api/driver/food-orders/:orderId/cancel
+  // PATCH /api/driver/orders/unified/:orderId/status - cancelled
   const cancelOrder = useCallback(
     (orderId: string, cancellationReason = '') =>
-      request(() => api.patch(`/driver/food-orders/${orderId}/cancel`, { cancellationReason })),
+      request(() => api.patch(`/driver/orders/unified/${orderId}/status`, { status: 'cancelled', reason: cancellationReason })),
     [request],
   );
 
-  // PATCH /api/driver/food-orders/:orderId/status  — status: PICKED_UP | DELIVERED
+  // PATCH /api/driver/orders/unified/:orderId/status  — status: picked_up | delivered
   const updateStatus = useCallback(
-    (orderId: string, status: 'PICKED_UP' | 'DELIVERED') =>
-      request(() => api.patch(`/driver/food-orders/${orderId}/status`, { status })),
+    (orderId: string, status: 'PICKED_UP' | 'DELIVERED' | 'picked_up' | 'delivered') => {
+      const normStatus = status.toLowerCase();
+      return request(() => api.patch(`/driver/orders/unified/${orderId}/status`, { status: normStatus }));
+    },
     [request],
   );
 
-  // GET /api/driver/food-orders/history
+  // GET /api/driver/orders/unified?status=delivered
   const getHistory = useCallback(
     (params: Record<string, string> = {}) => {
-      const query = new URLSearchParams(params).toString();
-      return request(() => api.get(`/driver/food-orders/history${query ? `?${query}` : ''}`));
+      const query = new URLSearchParams({ status: 'delivered', ...params }).toString();
+      return request(() => api.get(`/driver/orders/unified?${query}`));
     },
     [request],
   );

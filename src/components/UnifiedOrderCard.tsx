@@ -40,9 +40,13 @@ interface UnifiedOrderCardProps {
   loadItems?: any[];
   weight?: { value?: number; unit?: string };
 
-  // ── Callbacks ──
+  // Callbacks
   onAccept?: () => void;
   onIgnore?: () => void;
+  onGoToTrip?: () => void;
+  isSelectedByCustomer?: boolean;
+  isAccepted?: boolean;
+  driverId?: any;
 }
 
 const SERVICE_CONFIG = {
@@ -83,15 +87,36 @@ export default function UnifiedOrderCard({
   onPress,
   onAccept,
   onIgnore,
+  onGoToTrip,
   assignedDriverId,
+  driverId,
+  isAccepted: isAcceptedProp,
+  isSelectedByCustomer: isSelectedProp,
 }: UnifiedOrderCardProps) {
   const [actionLoading, setActionLoading] = React.useState<'accept' | 'ignore' | null>(null);
   const isFoodOrder = _orderType === 'food';
   const isParcelRequest = _orderType === 'parcel';
   
-  const svc = SERVICE_CONFIG[_orderType];
-  const trackingNo = isFoodOrder ? orderNumber : loadRequestNumber;
-  const currentStatus = isFoodOrder ? orderStatus : parcelStatus;
+  const svc = SERVICE_CONFIG[_orderType] || SERVICE_CONFIG.parcel;
+  const trackingNo = isFoodOrder ? orderNumber : (loadRequestNumber || orderNumber);
+  const currentStatus = isFoodOrder ? orderStatus : (parcelStatus || orderStatus);
+
+  // Active/Assigned order detection
+  const isOrderActive = Boolean(
+    isAcceptedProp ||
+    ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed', 'in_progress'].includes(
+      String(currentStatus || '').toLowerCase(),
+    )
+  );
+
+  // Customer has selected this driver after quote or assignment
+  const isSelectedByCustomer = Boolean(
+    !isOrderActive && (
+      isSelectedProp ||
+      ((currentStatus === 'waiting' || currentStatus === 'driver_selected' || currentStatus === 'waiting_driver_confirmation') &&
+        Boolean(driverId || assignedDriverId))
+    )
+  );
 
   // ── Format display data based on type ──
   const personName = isFoodOrder ? restaurantId?.name : sender?.name;
@@ -114,17 +139,17 @@ export default function UnifiedOrderCard({
   const handleAccept = async () => {
     if (!_id) { Toast.show({ type: 'error', text1: 'Order ID missing' }); return; }
     
-    // For parcel: just open detail modal (quote will be handled there)
-    if (isParcelRequest) {
+    // For unquoted parcel request where customer hasn't selected driver: open quote modal
+    if (isParcelRequest && currentStatus === 'quoting' && !isSelectedByCustomer) {
       onPress();
       return;
     }
 
-    // For food: accept the order
+    // Direct accept: For food orders, OR parcel requests where customer selected this driver
     try {
       setActionLoading('accept');
-      await api.patch(`/driver/food-orders/${_id}/accept`);
-      Toast.show({ type: 'success', text1: 'Order accepted!' });
+      await api.post(`/driver/orders/unified/${_id}/accept`);
+      Toast.show({ type: 'success', text1: 'Order accepted successfully!' });
       onAccept?.();
     } catch (error: any) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to accept';
@@ -138,12 +163,7 @@ export default function UnifiedOrderCard({
     if (!_id) { onIgnore?.(); return; }
     try {
       setActionLoading('ignore');
-      if (isFoodOrder) {
-        await api.patch(`/driver/food-orders/${_id}/reject`);
-      } else {
-        // For parcel: similar reject endpoint
-        await api.post(`/driver/parcel-requests/${_id}/reject`, {});
-      }
+      await api.post(`/driver/orders/unified/${_id}/reject`, { reason: 'Driver skipped order' });
       onIgnore?.();
     } catch {
       // Silently remove from list even if reject fails
@@ -156,8 +176,8 @@ export default function UnifiedOrderCard({
   return (
     <TouchableOpacity
       activeOpacity={0.88}
-      onPress={onPress}
-      style={styles.card}
+      onPress={isOrderActive ? (onGoToTrip || onPress) : onPress}
+      style={[styles.card, isOrderActive && styles.activeCardBorder]}
     >
       {/* ── Top row: service badge + tracking # + time ── */}
       <View style={styles.topRow}>
@@ -222,40 +242,63 @@ export default function UnifiedOrderCard({
         )}
       </View>
 
-      {/* ── Status badge (optional) ── */}
+      {/* ── Customer selected banner ── */}
+      {isSelectedByCustomer && (
+        <View style={styles.selectedBanner}>
+          <Text style={styles.selectedBannerText}>
+            🎉 Customer selected you! Tap Accept to confirm.
+          </Text>
+        </View>
+      )}
+
+      {/* ── Status badge ── */}
       {currentStatus && (
-        <View style={styles.statusBadgeRow}>
+        <View style={[styles.statusBadgeRow, isOrderActive && { backgroundColor: '#ECFDF5' }]}>
           <Text style={styles.statusBadgeText}>
-            Status: <Text style={styles.statusBadgeValue}>{currentStatus}</Text>
+            Status: <Text style={[styles.statusBadgeValue, isOrderActive && { color: '#059669' }]}>{currentStatus}</Text>
           </Text>
         </View>
       )}
 
       {/* ── Action buttons ── */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={styles.ignoreBtn}
-          onPress={handleIgnore}
-          disabled={actionLoading !== null}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.ignoreText}>
-            {actionLoading === 'ignore' ? 'Ignoring…' : 'Ignore'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.acceptBtn, actionLoading !== null && { opacity: 0.7 }]}
-          onPress={handleAccept}
-          disabled={actionLoading !== null}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.acceptBtnText}>
-            {actionLoading === 'accept'
-              ? isFoodOrder ? 'Accepting…' : 'Sending Quote…'
-              : isFoodOrder ? 'Accept' : 'Send Quote'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {isOrderActive ? (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.acceptBtn, { backgroundColor: '#10B981', shadowColor: '#10B981' }]}
+            onPress={onGoToTrip || onPress}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.acceptBtnText}>Go to Trip 🚀</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.ignoreBtn}
+            onPress={handleIgnore}
+            disabled={actionLoading !== null}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.ignoreText}>
+              {actionLoading === 'ignore' ? 'Ignoring…' : 'Ignore'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.acceptBtn, actionLoading !== null && { opacity: 0.7 }]}
+            onPress={handleAccept}
+            disabled={actionLoading !== null}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.acceptBtnText}>
+              {actionLoading === 'accept'
+                ? 'Accepting…'
+                : isSelectedByCustomer || isFoodOrder
+                ? 'Accept Order'
+                : 'Send Quote'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -273,6 +316,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.07,
     shadowRadius: 8,
     elevation: 3,
+  },
+  activeCardBorder: {
+    borderColor: '#A7F3D0',
+    borderWidth: 1.5,
   },
 
   // top row
@@ -375,6 +422,22 @@ const styles = StyleSheet.create({
   distanceChip: {
     backgroundColor: '#F0F9FF',
     borderColor: '#BAE6FD',
+  },
+
+  // selected banner
+  selectedBanner: {
+    marginTop: scale(10),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    backgroundColor: '#ECFDF5',
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  selectedBannerText: {
+    fontSize: fontScale(12),
+    fontFamily: 'Rubik-Medium',
+    color: '#065F46',
   },
 
   // status badge

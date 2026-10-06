@@ -74,7 +74,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onNavigateToLogin, 
           <View style={styles.header}>
             <AppLogo width={scale(103)} height={verticalScale(75)} />
             <TouchableOpacity onPress={handleSkip}>
-              <Text style={styles.skipText}>Skip >></Text>
+              <Text style={styles.skipText}>Skip &gt;&gt;</Text>
             </TouchableOpacity>
           </View>
 
