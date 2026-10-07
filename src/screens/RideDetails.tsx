@@ -33,11 +33,16 @@ import { fontScale, scale } from '../utils/scaling';
 type RideDetailsRouteProp = RouteProp<{ RideDetails: { order: any } }, 'RideDetails'>;
 
 const TRIP_STATUS_FLOW: Record<string, string> = {
-  CREATED: 'START_RIDE',
-  START_RIDE: 'ARRIVED_AT_PICKUP',
-  ARRIVED_AT_PICKUP: 'LOAD_COLLECTED',
-  LOAD_COLLECTED: 'DELIVERY_STARTED',
-  DELIVERY_STARTED: 'DELIVERY_COMPLETED',
+  assigned: 'arrived',
+  arrived: 'picked_up',
+  picked_up: 'in_transit',
+  in_transit: 'delivered',
+  // legacy fallbacks
+  CREATED: 'assigned',
+  START_RIDE: 'arrived',
+  ARRIVED_AT_PICKUP: 'picked_up',
+  LOAD_COLLECTED: 'in_transit',
+  DELIVERY_STARTED: 'delivered',
 };
 
 const CANCELLABLE_STATUSES = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP'];
@@ -169,13 +174,19 @@ export default function RideDetailsScreen() {
       return 'Order Completed';
     }
     const map: Record<string, string> = {
-      CREATED: 'Start Ride',
+      assigned: 'Arrived at Pickup',
+      arrived: isCabOrder ? 'Passenger Boarded' : 'Load Collected',
+      picked_up: 'Start Delivery',
+      in_transit: isCabOrder ? 'Complete Ride' : 'Complete Delivery',
+      delivered: 'Order Completed',
+      // Legacy compatibility
+      CREATED: 'Start to Pickup',
       START_RIDE: 'Arrived at Pickup',
       ARRIVED_AT_PICKUP: isCabOrder ? 'Passenger Boarded' : 'Load Collected',
       LOAD_COLLECTED: 'Start Delivery',
       DELIVERY_STARTED: isCabOrder ? 'Complete Ride' : 'Complete Delivery',
     };
-    return map[tripStatus] || 'Trip Completed';
+    return map[tripStatus] || 'Order Completed';
   };
 
 
@@ -186,12 +197,12 @@ export default function RideDetailsScreen() {
   useEffect(() => {
     if (!isFoodOrder) return;
     // Map food order status to a key fetchRoute understands
-    tripStatusRef.current = foodOrderStatus === 'out_for_delivery' ? 'DELIVERY_STARTED' : 'ready';
+    tripStatusRef.current = foodOrderStatus === 'out_for_delivery' ? 'in_transit' : 'ready';
   }, [foodOrderStatus, isFoodOrder]);
 
   // ── Active statuses → rideStarted ─────────────────────────────────────────
   useEffect(() => {
-    if (['START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED', 'DELIVERY_STARTED'].includes(tripStatus)) {
+    if (['assigned', 'arrived', 'picked_up', 'in_transit', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED', 'DELIVERY_STARTED'].includes(tripStatus)) {
       setRideStarted(true);
     }
   }, [tripStatus]);
@@ -302,7 +313,7 @@ export default function RideDetailsScreen() {
         destLng = pickup?.lng;
       }
     } else {
-      const goToPickup = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+      const goToPickup = ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
       if (goToPickup.includes(tripStatusRef.current)) {
         destLat = pickup?.lat;
         destLng = pickup?.lng;
@@ -385,51 +396,81 @@ export default function RideDetailsScreen() {
   // ── Update trip status ─────────────────────────────────────────────────────
   const updateTripStatus = async () => {
     const nextStatus = TRIP_STATUS_FLOW[tripStatus];
-    const tripId = activeTripId || (await fetchTripIdFromOrder());
-    if (!tripId) { Toast.show({ type: 'error', text1: 'Trip ID missing' }); return null; }
+    const orderIdToUse = activeOrderId || activeTripId || (await fetchTripIdFromOrder());
+    if (!orderIdToUse) { Toast.show({ type: 'error', text1: 'Trip ID missing' }); return null; }
     if (!nextStatus) { Toast.show({ type: 'info', text1: 'Trip already completed' }); return null; }
-
+console.log(nextStatus)
+// return
     try {
-      const res = await fetch(`${BASE_URL}/user/trip/update-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await AsyncStorage.getItem('token')}` },
-        body: JSON.stringify({ tripId, status: nextStatus }),
+      // Primary: Unified Order Status Update API
+      const res = await api.patch(`/driver/orders/unified/${orderIdToUse}/status`, {
+        status: nextStatus,
       });
-      const data = await res.json();
-      if (!data.success) { Toast.show({ type: 'error', text1: data.message }); return null; }
 
+      const updatedOrder = res?.data?.data?.order || res?.data?.order;
+      const finalStatus = updatedOrder?.status || nextStatus;
       const now = new Date().toISOString();
-      setTripStatus(data.data.status);
-      setTripData(data);
-      setStatusTimestamps(prev => ({ ...prev, [data.data.status]: now }));
-      Toast.show({ type: 'success', text1: `Status: ${data.data.status.replace(/_/g, ' ')}` });
 
-      if (data.data.status === 'DELIVERY_COMPLETED') {
+      setTripStatus(nextStatus);
+      if (updatedOrder) {
+        setOrderDetails((prev: any) => ({ ...(prev || {}), ...updatedOrder }));
+      }
+      setStatusTimestamps(prev => ({ ...prev, [nextStatus]: now }));
+      Toast.show({ type: 'success', text1: `Status: ${nextStatus.replace(/_/g, ' ')}` });
+
+      if (nextStatus === 'DELIVERY_COMPLETED' || finalStatus === 'delivered') {
         stopDriverLocationTracking();
         Storage.removeItem('tripId');
-        const timestamps = { ...statusTimestamps, [data.data.status]: now };
+        const timestamps = { ...statusTimestamps, [nextStatus]: now };
         const tripPayload = {
-          tripId, orderId: activeOrderId,
+          tripId: orderIdToUse,
+          orderId: activeOrderId,
           customerName: order?.customerId?.fullName || order?.sender?.name,
           dropAddress: order?.drop?.address,
-          pickup: order.pickup, drop: order.drop,
+          pickup: order.pickup,
+          drop: order.drop,
           earning: order?.finalPrice ?? order?.myQuote?.price ?? 0,
           orderAcceptedAt: order?.createdAt,
           pickedUpAt: timestamps['LOAD_COLLECTED'],
           arrivedAtDropAt: timestamps['DELIVERY_COMPLETED'],
-          totalDistance: routeDistance, totalDuration: routeDuration,
-          walletDeductAmount: data.data?.walletDeductAmount ?? 0,
+          totalDistance: routeDistance,
+          totalDuration: routeDuration,
+          walletDeductAmount: res.data?.data?.walletDeductAmount ?? 0,
         };
-        if (user.driverType !== 'COMPANY') {
-          setTripData({ walletDeductAmount: data.data?.walletDeductAmount ?? 0 });
+        if (user?.driverType !== 'COMPANY') {
+          setTripData({ walletDeductAmount: res.data?.data?.walletDeductAmount ?? 0 });
           setCompleteModalVisible(true);
         } else {
           navigation.navigate('TripComplete', { trip: tripPayload });
         }
       }
-      return data.data.status;
+      return nextStatus;
     } catch (e: any) {
-      Toast.show({ type: 'error', text1: e?.response?.data?.message || 'Failed to update status' });
+      // Fallback: Legacy trip update API
+      try {
+        const res2 = await fetch(`${BASE_URL}/user/trip/update-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({ tripId: orderIdToUse, status: nextStatus }),
+        });
+        const data = await res2.json();
+        if (data.success) {
+          const now = new Date().toISOString();
+          setTripStatus(data.data.status);
+          setTripData(data);
+          setStatusTimestamps(prev => ({ ...prev, [data.data.status]: now }));
+          Toast.show({ type: 'success', text1: `Status: ${data.data.status.replace(/_/g, ' ')}` });
+          return data.data.status;
+        }
+      } catch {}
+
+      Toast.show({
+        type: 'error',
+        text1: e?.response?.data?.message || 'Failed to update status',
+      });
       return null;
     }
   };
@@ -487,7 +528,7 @@ export default function RideDetailsScreen() {
 
   // ── Navigate ───────────────────────────────────────────────────────────────
   const openGoogleNavigation = async () => {
-    const goToPickup = ['CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+    const goToPickup = ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
     const dest = goToPickup.includes(tripStatus) ? pickup : drop;
     const lat = dest?.lat, lng = dest?.lng;
     if (!lat || !lng) return;

@@ -22,7 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { AppEvents, EVENTS } from '../utils/events';
 import Toast from 'react-native-toast-message';
 import { api } from '../services/apiClient';
-import  StorageService  from '../utils/Storage';
+import StorageService from '../utils/Storage';
 
 interface Props {
   visible: boolean;
@@ -48,10 +48,10 @@ function formatMoney(value: any, currency = 'BND') {
 }
 
 const SERVICE_CONFIG: Record<string, { label: string; bg: string; color: string; dot: string }> = {
-  food:   { label: 'FOOD',   bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
-  FOOD:   { label: 'FOOD',   bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
-  CAB:    { label: 'CAB',    bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
-  cab:    { label: 'CAB',    bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
+  food: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
+  FOOD: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
+  CAB: { label: 'CAB', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
+  cab: { label: 'CAB', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
   parcel: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
   PARCEL: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
 };
@@ -356,7 +356,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     merged.orderDetails?.package?.photos ||
     merged.orderDetails?.photos ||
     [];
-
+console.log(merged)
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -390,7 +390,9 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
           >
             {/* ── Customer Banner ── */}
             <View style={styles.customerRow}>
-              <View style={styles.avatarWrap}>
+             {/* <Text> {merged.status}</Text> */}
+              {merged.status=="assigned" &&<>
+               <View style={styles.avatarWrap}>
                 {customerPhoto ? (
                   <Image
                     source={{ uri: `${IMAGE_URL}/${customerPhoto}` }}
@@ -412,7 +414,8 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 <Text style={styles.timeAgo}>
                   {timeAgo(merged.createdAt)} • <Text style={{ color: Colors.primary, textTransform: 'uppercase' }}>{rawStatus}</Text>
                 </Text>
-              </View>
+              </View></> }
+             
               {displayAmount !== undefined && displayAmount !== null && (
                 <View style={styles.amountBadge}>
                   <Text style={styles.amountText}>
@@ -550,10 +553,10 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                     merged.weight?.value
                       ? `${merged.weight.value} ${merged.weight.unit}`
                       : merged.package?.weight
-                      ? `${merged.package.weight} ${merged.package.weightUnit || 'kg'}`
-                      : merged.orderDetails?.weight?.value
-                      ? `${merged.orderDetails.weight.value} ${merged.orderDetails.weight.unit}`
-                      : undefined
+                        ? `${merged.package.weight} ${merged.package.weightUnit || 'kg'}`
+                        : merged.orderDetails?.weight?.value
+                          ? `${merged.orderDetails.weight.value} ${merged.orderDetails.weight.unit}`
+                          : undefined
                   }
                 />
                 <InfoRow
