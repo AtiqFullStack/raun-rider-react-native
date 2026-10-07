@@ -499,11 +499,11 @@ const [syncLoading, setSyncLoading] = useState(false);
               String(orderStatus).toLowerCase()
             ) ||
             i.driverRequestStatus === 'ACCEPTED';
-
+ console.log(i)
           return {
             ...i,
             _id: i._id,
-            orderId: i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
+            orderId:  i?.orderDetails?.loadRequestNumber||i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
             status: orderStatus,
             orderStatus,
             isAccepted,

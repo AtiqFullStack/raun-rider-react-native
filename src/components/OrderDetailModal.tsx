@@ -22,7 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { AppEvents, EVENTS } from '../utils/events';
 import Toast from 'react-native-toast-message';
 import { api } from '../services/apiClient';
-import { StorageService } from '../utils/Storage';
+import  StorageService  from '../utils/Storage';
 
 interface Props {
   visible: boolean;
