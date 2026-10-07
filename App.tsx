@@ -140,6 +140,7 @@ function AppComp() {
           },
         },
       });
+      AppEvents.emit('NEW_NOTIFICATION',remoteMessage?.data)
 
       AppEvents.emit(EVENTS.REFRESH_ORDERS);
 
@@ -152,7 +153,17 @@ function AppComp() {
           });
         }
       }
-
+      if (remoteMessage.data.type == "LOAD_REQUEST_NEW") {
+        const nav = navigationRef.current;
+        if (nav) {
+          nav.dispatch(
+            CommonActions.navigate({
+              name: 'Tabs',
+              params: { screen: 'Trips' },
+            }),
+          );
+        }
+      }
       // New food order ready → jump to Trips tab (PENDING)
       if (remoteMessage?.data?.type === 'FOOD_ORDER_READY') {
         AppEvents.emit(EVENTS.NEW_FOOD_ORDER);
@@ -182,9 +193,9 @@ function AppComp() {
 
   const [backPressCount, setBackPressCount] = useState(0);
 
-  useEffect(()=>{
+  useEffect(() => {
     camerAndNotification()
-  },[])
+  }, [])
 
   useEffect(() => {
     const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
@@ -429,7 +440,7 @@ function AppComp() {
 
   return (
     <View style={{ flex: 1, paddingBottom: Platform.OS === 'android' ? insets.bottom : 0, paddingTop: insets.top }}>
-      
+
       <>
         {/* 🔹 HOME */}
         {currentScreen === 'home' && (

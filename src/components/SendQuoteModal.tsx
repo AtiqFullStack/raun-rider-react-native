@@ -42,7 +42,7 @@ const SendQuoteModal: React.FC<SendQuoteModalProps> = ({
 }) => {
   const [fare, setFare] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+console.log(orderDetails)
   useEffect(() => {
     if (visible && defaultPrice) {
       setFare(defaultPrice.toString());

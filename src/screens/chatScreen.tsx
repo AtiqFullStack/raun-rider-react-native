@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,48 +7,47 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Keyboard,
   Platform,
-
+  ActivityIndicator,
 } from 'react-native';
-import { imgaeUrlConverter } from '../utils/converter';
-import CommonHeader from '../components/common/Header';
-import { Colors } from '../constants/Colors';
-import { useSocket } from '../hooks/useSocket';
-import { getMessaging, onMessage } from '@react-native-firebase/messaging';
-import { getApp } from '@react-native-firebase/app';
-import { RouteProp, useRoute } from '@react-navigation/native';
-import { useAuth } from '../context/AuthContext';
-import { api } from '../services/apiClient';
+import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import BackIcon from '../assets/svg/chevron_big_left.svg';
+import { Colors } from '../constants/Colors';
+import { api } from '../services/apiClient';
+import { imgaeUrlConverter } from '../utils/converter';
+import { useAuth } from '../context/AuthContext';
 import KeyboardWrapper from '../components/KeyboardWrapper';
+import { AppEvents } from '../utils/events';
 
 type ChatScreenParams = {
   ChatScreen: {
-    tripId: string;
-    otherUserId: string;
-    otherUserName: string;
+    tripId?: string;
+    orderId?: string;
+    otherUserId?: string;
+    otherUserName?: string;
     otherUserPhoto?: string;
-    role: 'DRIVER' | 'CUSTOMER';
+    role?: 'DRIVER' | 'CUSTOMER';
   };
 };
 
 type ChatRouteProp = RouteProp<ChatScreenParams, 'ChatScreen'>;
 
-// Define message type
 interface Message {
   id: string;
   text: string;
   time: string;
   sender: 'me' | 'other';
-  status?: 'sent' | 'delivered' | 'read';
 }
 
 const ChatScreen = () => {
   const route = useRoute<ChatRouteProp>();
-  const { socket, isSocketConnected } = useSocket();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList>(null);
+  const { user } = useAuth();
+
   const normalizeId = (value: any) => {
     if (!value) return '';
     if (typeof value === 'object') {
@@ -56,620 +55,556 @@ const ChatScreen = () => {
     }
     return String(value);
   };
-  const { tripId: rawTripId, otherUserName, otherUserPhoto } = route.params;
-  const tripId = normalizeId(rawTripId);
-  const { user } = useAuth();
-  const flatListRef = React.useRef<FlatList>(null);
-  const [input, setInput] = React.useState('');
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const messagingInstance = React.useMemo(() => getMessaging(getApp()), []);
+
   const currentUserId = normalizeId(user?._id || user?.id || user?.userId);
-  const insets = useSafeAreaInsets();
-  const keyboardSpacerStyle = React.useMemo(
-    () => ({
-      paddingBottom: Math.max(insets.bottom, 8),
-    }),
-    [insets.bottom],
-  );
+  const rawTripId = route.params?.tripId || route.params?.orderId;
+  const tripId = normalizeId(rawTripId);
+  const otherUserName = route.params?.otherUserName;
+  const otherUserPhoto = route.params?.otherUserPhoto;
 
-  const appendIncomingMessage = React.useCallback(
-    (data: any) => {
-      const messageTripId = normalizeId(data?.tripId ?? data?.data?.tripId);
-      if (messageTripId && messageTripId !== tripId) {
-        console.log('⚠️ Message for different trip, ignoring');
-        return null;
+  const [order, setOrder] = useState<any>(null);
+  const [loadingOrder, setLoadingOrder] = useState<boolean>(false);
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
+  const [sending, setSending] = useState<boolean>(false);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  // ── Fetch order details on mount ──────────────────────────────────
+  useEffect(() => {
+    if (!tripId) return;
+
+    const fetchOrder = async () => {
+      try {
+        setLoadingOrder(true);
+        // Primary: /driver/orders/unified/:id
+        const res = await api.get(`/driver/orders/unified/${tripId}`);
+        const ordData = res.data?.data?.order || res.data?.order || res.data?.data;
+        if (ordData) {
+          setOrder(ordData);
+          return;
+        }
+      } catch (err: any) {
+        try {
+          const res2 = await api.get(`/unifiedorder/${tripId}`);
+          const ordData = res2.data?.data?.order || res2.data?.order || res2.data?.data;
+          if (ordData) {
+            setOrder(ordData);
+            return;
+          }
+        } catch (fallbackErr: any) {
+          console.error('Failed to fetch order:', fallbackErr);
+        }
+      } finally {
+        setLoadingOrder(false);
       }
+    };
 
-      const messageText = data?.message ?? data?.data?.message ?? data?.body;
-      if (!messageText) {
-        return null;
-      }
-
-      const senderId = normalizeId(data?.senderId ?? data?.data?.senderId);
-      const createdAt = data?.createdAt ?? data?.data?.createdAt;
-      const messageId =
-        normalizeId(data?.messageId ?? data?.data?.messageId ?? data?._id ?? data?.id) ||
-        `${senderId || 'unknown'}-${createdAt || Date.now()}-${messageText}`;
-      const isMyMessage = senderId === currentUserId;
-
-      setMessages(prev => {
-        if (prev.some(msg => msg.id === messageId)) return prev;
-        return [
-          ...prev,
-          {
-            id: messageId,
-            text: String(messageText),
-            sender: isMyMessage ? 'me' : 'other',
-            time: createdAt
-              ? new Date(createdAt).toLocaleTimeString()
-              : new Date().toLocaleTimeString(),
-            status: isMyMessage ? 'sent' : 'delivered',
-          },
-        ];
-      });
-
-      return messageId;
-    },
-    [currentUserId, tripId],
-  );
+    fetchOrder();
+  }, [tripId]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const showSub = Keyboard.addListener(showEvent, () => {
-      requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
+    const newMessage = AppEvents.addListener('NEW_NOTIFICATION', (data: any) => {
+      console.log('new message notification received:', data);
+      if (data?.type === 'NEW_MESSAGE') {
+        const notificationTripId = normalizeId(data.tripId || data.orderId || data.sourceId);
+        if (notificationTripId && notificationTripId === tripId) {
+          const messageId =
+            data.messageId || data._id || `${Date.now()}-${Math.random()}`;
+          const senderId = normalizeId(data.senderId);
+          const isMe = senderId ? senderId === currentUserId : data.senderType === 'driver';
+
+          const formattedMessage: Message = {
+            id: messageId,
+            text: data.message || '',
+            time: data.createdAt
+              ? new Date(data.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : new Date().toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+            sender: isMe ? 'me' : 'other',
+          };
+
+          setMessages(prev => {
+            if (prev.some(m => m.id === messageId)) return prev;
+            return [...prev, formattedMessage];
+          });
+
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
+      }
     });
 
     return () => {
-      showSub.remove();
+      newMessage.remove();
     };
-  }, []);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const res = await api.get(`/user/trip/trip-Message/${tripId}`);
-        const fetched = (res.data?.data || []).map((m: any) => ({
-          id: m._id,
-          text: m.message,
-          sender: normalizeId(m.senderId) === currentUserId ? 'me' : 'other',
-          time: new Date(m.createdAt).toLocaleTimeString(),
-          status: 'delivered',
-        }));
-        setMessages(fetched);
-      } catch (e) {
-        console.log('Fetch messages error:', e);
-      }
-    };
-
-    if (tripId) fetchMessages();
   }, [tripId, currentUserId]);
 
+
+  // ── Fetch message history on mount ─────────────────────────────────
   useEffect(() => {
-console.log(socket,tripId,currentUserId,isSocketConnected)
+    if (!tripId) return;
 
-    if (!socket || !tripId || !currentUserId || !isSocketConnected) {
-      console.log('❌ Cannot join room - missing requirements');
-      return;
-    }
+    const fetchMessages = async () => {
+      try {
+        setLoadingMessages(true);
+        let msgList: any[] = [];
 
-    console.log('🚀 Emitting JOIN_TRIP...');
-    
-    // Set a timeout to detect if server doesn't respond
-    const joinTimeout = setTimeout(() => {
-      console.log('⚠️ JOIN_TRIP timeout - no acknowledgment received after 5s');
-    }, 5000);
+        try {
+          const res = await api.get(`/chat/${tripId}/messages`);
+          msgList = res.data?.data?.messages || res.data?.messages || res.data?.data || [];
+        } catch {
+          const res2 = await api.get(`/user/trip/trip-Message/${tripId}`);
+          msgList = res2.data?.data || res2.data?.messages || [];
+        }
 
-    socket.emit('JOIN_TRIP', { tripId, userId: currentUserId }, (ack: any) => {
-      clearTimeout(joinTimeout);
-      console.log('✅ JOIN_TRIP acknowledgment:', ack);
-      if (ack?.error) {
-        console.error('❌ JOIN_TRIP error:', ack.error);
-        Toast.show({
-          type: 'error',
-          text1: 'Unable to open chat',
-          text2: ack.error,
+        const formatted = msgList.map((m: any) => {
+          const senderId = normalizeId(m.senderId);
+          const isMe = senderId ? senderId === currentUserId : m.senderType === 'driver';
+          return {
+            id: m._id || m.id || `${Date.now()}-${Math.random()}`,
+            text: m.message || m.text || '',
+            time: m.createdAt
+              ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            sender: isMe ? ('me' as const) : ('other' as const),
+          };
         });
-      } else {
-        console.log('✅ Successfully joined room for trip:', tripId);
-      }
-    });
 
-    // Listen for socket errors
-    const handleError = (error: any) => {
-      console.error('🔴 Socket error:', error);
-    };
-
-    socket.on('error', handleError);
-    socket.on('connect_error', handleError);
-
-    return () => {
-      console.log('🔴 Leaving trip:', tripId);
-      socket.emit('LEAVE_TRIP', { tripId });
-      socket.off('error', handleError);
-      socket.off('connect_error', handleError);
-    };
-  }, [socket, tripId, isSocketConnected, currentUserId]);
-
-  useEffect(() => {
-    console.log('CHAT PARAMS:', route.params);
-    console.log('otherUserPhoto:', otherUserPhoto);
-  }, [route.params, otherUserPhoto]);
-  useEffect(() => {
-    if (messages.length > 0) {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }
-  }, [messages]);
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleReceiveMessage = (data: any) => {
-      console.log('📥 RECEIVE_MESSAGE event:', data);
-      const messageId =
-        normalizeId(data?.messageId ?? data?.data?.messageId ?? data?._id ?? data?.id) ||
-        `${Date.now()}`;
-
-      // Don't add if it's my own message (already added optimistically)
-      if (normalizeId(data?.senderId ?? data?.data?.senderId) === currentUserId) {
-        console.log('⚠️ Ignoring own message from RECEIVE_MESSAGE (already in UI)');
-        // Update the temp message with real ID from server
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.sender === 'me' && msg.text === data.message
-              ? { ...msg, id: messageId, status: 'delivered' }
-              : msg,
-          ),
-        );
-        return;
-      }
-
-      const appendedMessageId = appendIncomingMessage(data);
-      if (appendedMessageId) {
-        socket.emit('MESSAGE_DELIVERED', { tripId, messageId: appendedMessageId });
+        setMessages(formatted);
+      } catch (err) {
+        console.log('Error fetching chat messages:', err);
+      } finally {
+        setLoadingMessages(false);
       }
     };
 
-    // socket.on('RECEIVE_MESSAGE', handleReceiveMessage);
+    fetchMessages();
+  }, [tripId, currentUserId]);
 
-    return () => {
-      socket.off('RECEIVE_MESSAGE', handleReceiveMessage);
-    };
-  }, [appendIncomingMessage, socket, tripId, currentUserId]);
+  // ── Customer details extraction ────────────────────────────────────
+  const customer =
+    order?.customerId ||
+    order?.orderDetails?.customerId ||
+    order?.orderDetails?.userAuthId;
 
-  useEffect(() => {
-    if (!socket) return;
+  const customerName =
+    customer?.fullName ||
+    (customer?.firstName
+      ? `${customer.firstName} ${customer.surName || customer.lastName || ''}`.trim()
+      : '') ||
+    customer?.name ||
+    order?.orderDetails?.sender?.name ||
+    otherUserName ||
+    'Customer';
 
-    const handleDelivered = (data: any) => {
-      if (normalizeId(data.tripId) !== tripId) return;
+  const customerPhoto =
+    customer?.profileImage ||
+    customer?.photo ||
+    customer?.selfiePhoto ||
+    otherUserPhoto;
 
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === data.messageId ? { ...msg, status: 'delivered' } : msg,
-        ),
-      );
-    };
-
-    socket.on('MESSAGE_DELIVERED', handleDelivered);
-
-    return () => {
-      socket.off('MESSAGE_DELIVERED', handleDelivered);
-    };
-  }, [socket, tripId]);
-
-  useEffect(() => {
-    if (!socket || !tripId) return;
-
-    socket.emit('MARK_AS_READ', { tripId });
-  }, [socket, tripId]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleRead = (data: any) => {
-      setMessages(prev =>
-        prev.map(msg =>
-          data.messageIds.includes(msg.id) ? { ...msg, status: 'read' } : msg,
-        ),
-      );
-    };
-
-    socket.on('MESSAGE_READ', handleRead);
-
-    return () => {
-      socket.off('MESSAGE_READ', handleRead);
-    };
-  }, [socket]);
-
-  const profileUri =
-    otherUserPhoto && otherUserPhoto.trim() !== ''
-      ? imgaeUrlConverter(otherUserPhoto)
+  const avatarUri =
+    customerPhoto && String(customerPhoto).trim() !== ''
+      ? imgaeUrlConverter(customerPhoto)
       : null;
 
-  useEffect(() => {
-  const unsubscribe = onMessage(messagingInstance, async remoteMessage => {
-    const data = remoteMessage.data;
+  const orderNumber =
+    order?.orderDetails?.loadRequestNumber || order?.orderNumber || (tripId ? `#${tripId.slice(-6)}` : '');
 
-    if (data?.type === 'NEW_MESSAGE' && normalizeId(data?.tripId) === tripId) {
-      const messageId = appendIncomingMessage(data);
-      if (messageId && socket) {
-        socket.emit('MESSAGE_DELIVERED', { tripId, messageId });
-      }
-    }
-  });
+  // ── Send message action calling POST /chat/send-message ─────────────
+  const handleSend = async () => {
+    const textToSend = input.trim();
+    if (!textToSend || sending) return;
 
-  return unsubscribe;
-}, [appendIncomingMessage, messagingInstance, socket, tripId]);
-
-  const sendMessage = () => {
-    if (!tripId || !currentUserId) {
+    if (!tripId) {
       Toast.show({
         type: 'error',
-        text1: 'Chat not ready',
-        text2: 'Trip or user id is missing.',
+        text1: 'Cannot send message',
+        text2: 'Order ID is missing.',
       });
       return;
     }
 
-    if (!input.trim() || !socket) {
-      console.log('❌ Cannot send message. Socket:', !!socket, 'Input:', input);
-      return;
-    }
-
-
     const tempId = Date.now().toString();
-    const messageText = input;
-
-    const messagePayload = {
-      tripId,
-      senderId: currentUserId,
-      message: messageText,
+    const tempMessage: Message = {
+      id: tempId,
+      text: textToSend,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      sender: 'me',
     };
 
-
-    console.log(messagePayload)
-    // return 
-    console.log('🚀 Emitting SEND_MESSAGE:', messagePayload);
-
     // Optimistic UI update
-    setMessages(prev => [
-      ...prev,
-      {
-        id: tempId,
-        text: messageText,
-        sender: 'me',
-        time: new Date().toLocaleTimeString(),
-        status: 'sent',
-      },
-    ]);
+    setMessages(prev => [...prev, tempMessage]);
+    setInput('');
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
 
+    try {
+      setSending(true);
+      const res = await api.post('/chat/send-message', {
+        orderId: tripId,
+        message: textToSend,
+      });
 
-
-    const sendTimeout = setTimeout(() => {
-      console.log('⚠️ SEND_MESSAGE timeout - no acknowledgment after 5s');
-    }, 5000);
-
-    socket.emit('SEND_MESSAGE', messagePayload, (response: any) => {
-      clearTimeout(sendTimeout);
-   
-      
-      if (response?.error) {
-        console.error('❌ Send message error:', response.error);
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(msg => msg.id !== tempId));
-        Toast.show({
-          type: 'error',
-          text1: 'Failed to send message',
-          text2: response.error,
-        });
-      } else if (response?.messageId) {
-        console.log('✅ Message sent successfully with ID:', response.messageId);
-        // Update temp ID with real ID
+      console.log('Send message API success:', res.data);
+      const serverMsg = res.data?.data?.message || res.data?.message;
+      if (serverMsg) {
         setMessages(prev =>
-          prev.map(msg =>
-            msg.id === tempId ? { ...msg, id: response.messageId } : msg,
+          prev.map(m =>
+            m.id === tempId
+              ? {
+                ...m,
+                id: serverMsg._id || serverMsg.id || tempId,
+                time: serverMsg.createdAt
+                  ? new Date(serverMsg.createdAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                  : m.time,
+              }
+              : m,
           ),
         );
-      } else {
-        console.log('✅ Message sent (no messageId in response)');
       }
-    });
-
-    setInput('');
+    } catch (err: any) {
+      console.error('Send message API error:', err);
+      // Remove optimistic message on failure
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInput(textToSend);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to send message',
+        text2: err?.response?.data?.message || err?.message || 'Please try again',
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
-  const renderItem = ({ item, index }: { item: Message; index: number }) => {
-    const isMyMessage = item.sender === 'me';
-
-    const showDate = index === 0; // simple version for now
-
+  const renderMessageItem = ({ item }: { item: Message }) => {
+    const isMe = item.sender === 'me';
     return (
-      <>
-        {showDate && (
-          <View style={styles.dateSeparatorInline}>
-            <Text style={styles.dateText}>Today</Text>
+      <View
+        style={[
+          styles.messageRow,
+          isMe ? styles.messageRowMe : styles.messageRowOther,
+        ]}
+      >
+        <View
+          style={[
+            styles.messageBubble,
+            isMe ? styles.bubbleMe : styles.bubbleOther,
+          ]}
+        >
+          <Text style={[styles.messageText, isMe ? styles.textMe : styles.textOther]}>
+            {item.text}
+          </Text>
+          <Text style={[styles.timeText, isMe ? styles.timeMe : styles.timeOther]}>
+            {item.time}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <KeyboardWrapper>
+      <View style={styles.container}>
+        {/* ── CUSTOM HEADER WITH CUSTOMER IMAGE AND NAME ── */}
+        <View style={[styles.headerContainer, { paddingTop: Math.max( 12) }]}>
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <BackIcon color={Colors.white} width={24} height={24} />
+            </TouchableOpacity>
+
+            <View style={styles.avatarWrapper}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatar} resizeMode="cover" />
+              ) : (
+                <Image
+                  source={require('../assets/images/default-avatar.jpg')}
+                  style={styles.avatar}
+                  resizeMode="cover"
+                />
+              )}
+            </View>
+
+            <View style={styles.headerInfo}>
+              <Text style={styles.customerName} numberOfLines={1}>
+                {customerName}
+              </Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {loadingOrder
+                  ? 'Fetching details...'
+                  : orderNumber
+                    ? `Order ${orderNumber}`
+                    : 'Online'}
+              </Text>
+            </View>
+
+            {loadingOrder && (
+              <ActivityIndicator size="small" color={Colors.white} style={styles.loader} />
+            )}
+          </View>
+        </View>
+
+        {/* ── ORDER SUMMARY STRIP (IF ORDER DATA IS AVAILABLE) ── */}
+        {order && (
+          <View style={styles.orderStrip}>
+            <View style={styles.orderStripCol}>
+              <Text style={styles.stripLabel}>Pickup</Text>
+              <Text style={styles.stripValue} numberOfLines={1}>
+                {order.pickup?.address || order.orderDetails?.pickupLocation?.address || 'N/A'}
+              </Text>
+            </View>
+            <View style={styles.stripDivider} />
+            <View style={styles.orderStripCol}>
+              <Text style={styles.stripLabel}>Drop</Text>
+              <Text style={styles.stripValue} numberOfLines={1}>
+                {order.drop?.address || order.orderDetails?.dropoffLocation?.address || 'N/A'}
+              </Text>
+            </View>
           </View>
         )}
 
-        <View
-          style={[
-            styles.messageContainer,
-            isMyMessage
-              ? styles.myMessageContainer
-              : styles.otherMessageContainer,
-          ]}
-        >
-          <View
-            style={[
-              styles.messageBubble,
-              isMyMessage ? styles.myMessageBubble : styles.otherMessageBubble,
-            ]}
-          >
-            <Text
-              style={[
-                styles.messageText,
-                isMyMessage ? styles.myMessageText : styles.otherMessageText,
-              ]}
-            >
-              {item.text}
-            </Text>
-
-            <View style={styles.messageFooter}>
-              <Text style={[styles.messageTime, isMyMessage ? styles.myTime : styles.otherTime]}>
-                {item.time}
-              </Text>
-
-              {/* {isMyMessage && item.status && (
-                <Text
-                  style={[
-                    styles.messageStatus,
-                    item.status === 'read' && { color: '#34B7F1' },
-                  ]}
-                >
-                  {item.status === 'sent' && '✓'}
-                  {item.status === 'delivered' && '✓✓'}
-                  {item.status === 'read' && '✓✓'}
-                </Text>
-              )} */}
-            </View>
+        {/* ── MESSAGES LIST ── */}
+        {loadingMessages ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={Colors.primary || '#014D4D'} />
           </View>
-        </View>
-      </>
-    );
-  };
-  return (
-<KeyboardWrapper>
-
-
-      <View style={styles.container}>
-        <CommonHeader title="" showBackgroundImage={true} />
-
-        <View style={styles.root}>
-          {/* 📍 FLOATING CHAT HEADER CARD */}
-          <View style={styles.floatingCard}>
-            <View style={styles.headerContent}>
-              <Image
-                source={
-                  profileUri
-                    ? { uri: profileUri }
-                    : require('../assets/images/default-avatar.jpg')
-                }
-                style={styles.avatar}
-                resizeMode="cover"
-                onError={e =>
-                  console.log('Image load error:', e.nativeEvent.error)
-                }
-              />
-              <View style={styles.headerInfo}>
-                {/* Sender name (parcel) or customer name */}
-                <Text style={styles.headerName} numberOfLines={1}>
-                  {unifiedOrder?.orderDetails?.sender?.name ||
-                    unifiedOrder?.orderDetails?.userAuthId?.fullName ||
-                    unifiedOrder?.customerId?.fullName ||
-                    otherUserName ||
-                    'Customer'}
-                </Text>
-                <Text style={styles.headerStatus}>● Online</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Messages List */}
+        ) : (
           <FlatList
             ref={flatListRef}
             data={messages}
-            renderItem={renderItem}
             keyExtractor={item => item.id}
+            renderItem={renderMessageItem}
             contentContainerStyle={styles.messagesList}
-            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            onContentSizeChange={() =>
-              flatListRef.current?.scrollToEnd({ animated: true })
-            }
           />
-        </View>
-        <View
-          style={[
-            styles.inputContainer,
-            keyboardSpacerStyle,
-          ]}
-        >
+        )}
+
+        {/* ── INPUT BAR ── */}
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
+            style={styles.input}
             value={input}
             onChangeText={setInput}
             placeholder="Type a message..."
-            placeholderTextColor="#999"
-            style={styles.chatInput}
+            placeholderTextColor="#9CA3AF"
+            multiline={false}
             returnKeyType="send"
-            onSubmitEditing={sendMessage}
+            onSubmitEditing={handleSend}
+            editable={!sending}
           />
-
-          <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
-            <Text style={styles.sendText}>Send</Text>
+          <TouchableOpacity
+            style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+            onPress={handleSend}
+            activeOpacity={0.8}
+            disabled={sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.sendButtonText}>Send</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
-      </KeyboardWrapper>
-
+    </KeyboardWrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: '#F3F4F6',
   },
-  root: {
-    flex: 1,
-    marginTop: 25,
+  headerContainer: {
+    backgroundColor: '#014D4D',
     paddingHorizontal: 16,
-  },
-  floatingCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    marginTop: -25, // Negative margin to pull it up over the header
-    marginBottom: 16,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    padding: 8,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
+  },
+  backBtn: {
+    padding: 4,
+    marginRight: 8,
+  },
+  avatarWrapper: {
+    marginRight: 12,
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#D0A645',
   },
   headerInfo: {
     flex: 1,
   },
-  headerName: {
+  customerName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    fontFamily: 'Rubik-Medium',
+    fontFamily: 'Rubik-Bold',
+    color: '#FFFFFF',
   },
-  headerStatus: {
+  headerSubtitle: {
     fontSize: 12,
-    color: '#4CAF50',
-    marginTop: 2,
     fontFamily: 'Rubik-Regular',
+    color: '#D1D5DB',
+    marginTop: 2,
   },
-  messagesList: {
-    paddingTop: 8,
-    paddingBottom: 16,
+  loader: {
+    marginLeft: 8,
   },
-  messageContainer: {
-    marginBottom: 12,
-    maxWidth: '80%',
-  },
-  myMessageContainer: {
-    alignSelf: 'flex-end',
-  },
-  otherMessageContainer: {
-    alignSelf: 'flex-start',
-  },
-  messageBubble: {
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  orderStrip: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 10,
+    padding: 10,
+    elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.08,
     shadowRadius: 2,
-    elevation: 2,
+    alignItems: 'center',
   },
-  myMessageBubble: {
-    backgroundColor: Colors.primary,
-    borderBottomRightRadius: 4,
+  orderStripCol: {
+    flex: 1,
   },
-  otherMessageBubble: {
-    backgroundColor: 'white',
-    borderBottomLeftRadius: 4,
+  stripLabel: {
+    fontSize: 10,
+    fontFamily: 'Rubik-Medium',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+  },
+  stripValue: {
+    fontSize: 12,
+    fontFamily: 'Rubik-Regular',
+    color: '#1F2937',
+    marginTop: 2,
+  },
+  stripDivider: {
+    width: 1,
+    height: '80%',
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 10,
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  messageRow: {
+    marginVertical: 4,
+    flexDirection: 'row',
+  },
+  messageRowMe: {
+    justifyContent: 'flex-end',
+  },
+  messageRowOther: {
+    justifyContent: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '75%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  bubbleMe: {
+    backgroundColor: Colors.primary || '#014D4D',
+    borderBottomRightRadius: 2,
+  },
+  bubbleOther: {
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   messageText: {
     fontSize: 14,
+    fontFamily: 'Rubik-Regular',
     lineHeight: 20,
-    fontFamily: 'Rubik-Regular',
   },
-  myMessageText: {
-    color: Colors.white,
+  textMe: {
+    color: '#FFFFFF',
   },
-  otherMessageText: {
-    color: '#000',
+  textOther: {
+    color: '#1F2937',
   },
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 2,
-  },
-  messageTime: {
+  timeText: {
     fontSize: 10,
-    marginRight: 4,
     fontFamily: 'Rubik-Regular',
+    marginTop: 4,
+    alignSelf: 'flex-end',
   },
-  myTime: {
-    color: Colors.white,
+  timeMe: {
+    color: '#D1D5DB',
   },
-  otherTime: {
-    color: '#666',
+  timeOther: {
+    color: '#9CA3AF',
   },
-  messageStatus: {
-    fontSize: 12,
-    color: '#34B7F1',
-  },
-  dateSeparatorInline: {
-    alignSelf: 'center',
-    marginVertical: 10,
-  },
-  dateText: {
-    fontSize: 12,
-    color: '#666',
-    backgroundColor: '#e0e0e0',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-    fontFamily: 'Rubik-Regular',
-  },
-
   inputContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    
-    borderColor: '#eee',
-  },
-
-  chatInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    color: Colors.black,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-    marginRight: 8,
-  },
-
-  sendBtn: {
-    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
-    justifyContent: 'center',
-    borderRadius: 20,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
-  sendText: {
-    color: '#fff',
+  input: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    fontSize: 14,
+    fontFamily: 'Rubik-Regular',
+    color: '#111827',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginRight: 10,
+  },
+  sendButton: {
+    backgroundColor: Colors.primary || '#014D4D',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 70,
+  },
+  sendButtonDisabled: {
+    opacity: 0.6,
+  },
+  sendButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Rubik-Medium',
   },
 });
 

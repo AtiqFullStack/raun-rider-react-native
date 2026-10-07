@@ -30,8 +30,6 @@ export const startDriverLocationTracking = (
         if (generation !== trackingGeneration) return;
         const { latitude, longitude, heading } = position.coords;
 
-        console.log("📍 Driver location:", latitude, longitude);
-
         onLocationChange?.({
           latitude,
           longitude,
@@ -88,8 +86,6 @@ export const getCurrentLocation = (): Promise<{
     Geolocation.getCurrentPosition(
       position => {
         const { latitude, longitude, heading } = position.coords;
-
-        console.log("📍 Current Location:", latitude, longitude);
 
         resolve({
           lat: latitude,

@@ -124,7 +124,7 @@ export default function AllOrders() {
   const searchRef = useRef('');
   const cancelledOrderIdsRef = useRef<string[]>([]);
   const didRunInitialSearchEffect = useRef(false);
-  console.log(orders)
+console.log(selectedOrderForQuote)
 
   useEffect(() => {
     searchRef.current = search.trim();
@@ -596,6 +596,8 @@ export default function AllOrders() {
               drop={item.drop}
               onPress={() => openOrderDetail(item)}
               onGoToTrip={() => goToTrip(item)}
+              // ── Send Quote: open modal directly with price entry ──
+              onSendQuote={() => setSelectedOrderForQuote(item)}
               onAccept={() => {
                 setCancelledOrderIds(prev => [...prev, item._id]);
                 setOrders(prev => prev.filter(o => o._id !== item._id));

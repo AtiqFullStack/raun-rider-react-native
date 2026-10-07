@@ -47,7 +47,7 @@ class ForegroundService {
     };
 
     static start = async () => {
-        console.log("🔥 START SERVICE CALLED");
+     
         if (Platform.OS === 'ios') {
             await startTracking();
             return;

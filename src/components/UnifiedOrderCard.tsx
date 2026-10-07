@@ -44,6 +44,7 @@ interface UnifiedOrderCardProps {
   onAccept?: () => void;
   onIgnore?: () => void;
   onGoToTrip?: () => void;
+  onSendQuote?: () => void;  // called when driver taps Send Quote
   isSelectedByCustomer?: boolean;
   isAccepted?: boolean;
   driverId?: any;
@@ -88,11 +89,13 @@ export default function UnifiedOrderCard({
   onAccept,
   onIgnore,
   onGoToTrip,
+  onSendQuote,
   assignedDriverId,
   driverId,
   isAccepted: isAcceptedProp,
   isSelectedByCustomer: isSelectedProp,
 }: UnifiedOrderCardProps) {
+  console.log({orderStatus,_orderType,parcelStatus});
   const [actionLoading, setActionLoading] = React.useState<'accept' | 'ignore' | null>(null);
   const isFoodOrder = _orderType === 'food';
   const isParcelRequest = _orderType === 'parcel';
@@ -138,14 +141,25 @@ export default function UnifiedOrderCard({
   // ── Action handlers ──
   const handleAccept = async () => {
     if (!_id) { Toast.show({ type: 'error', text1: 'Order ID missing' }); return; }
-    
-    // For unquoted parcel request where customer hasn't selected driver: open quote modal
-    if (isParcelRequest && currentStatus === 'quoting' && !isSelectedByCustomer) {
-      onPress();
+  
+    // For parcel orders where customer hasn't selected this driver yet → open Send Quote modal directly
+    // This covers: submitted, finding_drivers, quoting statuses
+    const parcelQuoteStatuses = ['submitted', 'finding_drivers', 'quoting'];
+    console.log({parcelQuoteStatuses,isParcelRequest ,currentStatus, isSelectedByCustomer})
+    // return
+    if (currentStatus=="pending" && isParcelRequest) {
+      
+      // Prefer dedicated quote callback; fall back to detail modal
+      if (onSendQuote) {
+        onSendQuote();
+      } else {
+        console.log('here')
+        onPress();
+      }
       return;
     }
 
-    // Direct accept: For food orders, OR parcel requests where customer selected this driver
+    // Direct accept: For food orders, OR parcel requests where customer already selected this driver
     try {
       setActionLoading('accept');
       await api.post(`/driver/orders/unified/${_id}/accept`);

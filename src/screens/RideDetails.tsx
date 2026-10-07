@@ -178,6 +178,7 @@ export default function RideDetailsScreen() {
     return map[tripStatus] || 'Trip Completed';
   };
 
+
   // ── Sync tripStatusRef ─────────────────────────────────────────────────────
   useEffect(() => { tripStatusRef.current = tripStatus; }, [tripStatus]);
 
@@ -506,9 +507,11 @@ export default function RideDetailsScreen() {
 
   // ── Chat ───────────────────────────────────────────────────────────────────
   const openChat = () => {
-    if (!activeTripId) { Toast.show({ type: 'error', text1: 'Trip not active yet' }); return; }
+    console.log(orderDetails)
+    // return
+    if (!orderDetails._id) { Toast.show({ type: 'error', text1: 'Trip not active yet' }); return; }
     navigation.navigate('ChatScreen', {
-      tripId: activeTripId,
+      tripId: orderDetails._id,
       otherUserId: currentOrder?.userAuthId?._id ?? currentOrder?.customerId?._id ?? currentOrder?.customerId,
       otherUserName: customerName,
       otherUserPhoto: currentOrder?.customerId?.portraitPhoto,

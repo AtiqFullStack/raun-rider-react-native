@@ -57,7 +57,7 @@ const formatDuration = (seconds: number) => {
 const apiCall = async (data: any) => {
   const storedToken = await StorageService.getItem('token');
   const tripId = await StorageService.getItem('tripId');  // actual orderId
-console.log({tripId})
+// console.log({tripId})
   if (!tripId) return;  // active order nahi hai to location bhejne ki zaroorat nahi
 
   try {
@@ -90,7 +90,7 @@ export const startTracking = async () => {
       return;
     }
 
-    console.log('🚀 Starting tracking...');
+    // console.log('🚀 Starting tracking...');
 
     LocationModule.startTracking();
 
@@ -129,7 +129,7 @@ export const startTracking = async () => {
 
       // ✅ CONDITION: Save only if 1 min passed (AND movement optional)
       if (isTimePassed) {
-        console.log('✅ Saving (1 min interval)', payload);
+        // console.log('✅ Saving (1 min interval)', payload);
 
         lastSavedTime = currentTime;
 
@@ -152,7 +152,7 @@ export const startTracking = async () => {
           durationText: formatDuration(durationSec),
         };
 
-        console.log('🛑 Stay Data:', stayData);
+        // console.log('🛑 Stay Data:', stayData);
 
         // 🔄 RESET
         lastLocation = payload;
@@ -169,7 +169,7 @@ export const stopTracking = () => {
   try {
     if (!LocationModule) return;
 
-    console.log('🛑 Stopping tracking...');
+    // console.log('🛑 Stopping tracking...');
 
     LocationModule.stopTracking();
 

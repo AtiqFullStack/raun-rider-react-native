@@ -350,10 +350,12 @@ const [syncLoading, setSyncLoading] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
-      const res = await api.get('/user/auth/driver-dashboard');
-      if (res.data?.success) setDashboardData(res.data.data);
+      const res = await api.get('/driver/profile');
+      if (res.data?.success && res.data?.data) {
+        setDashboardData(res.data.data);
+      }
     } catch (e) {
-      console.log('Profile fetch error:', e);
+      // Ignore dashboard fetch error gracefully
     }
   };
 

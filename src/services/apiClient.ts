@@ -64,7 +64,7 @@ export const api = {
     }
   },
 
-  post: async (endpoint: string, data: any) => {
+  post: async (endpoint: string, data: any = {}) => {
     await checkNetwork();
     try {
        const headers = await getAuthHeaders();
