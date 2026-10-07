@@ -459,8 +459,13 @@ console.log(socket,tripId,currentUserId,isSocketConnected)
                 }
               />
               <View style={styles.headerInfo}>
-                <Text style={styles.headerName}>
-                  {otherUserName || 'Kabelo Nkosi'}
+                {/* Sender name (parcel) or customer name */}
+                <Text style={styles.headerName} numberOfLines={1}>
+                  {unifiedOrder?.orderDetails?.sender?.name ||
+                    unifiedOrder?.orderDetails?.userAuthId?.fullName ||
+                    unifiedOrder?.customerId?.fullName ||
+                    otherUserName ||
+                    'Customer'}
                 </Text>
                 <Text style={styles.headerStatus}>● Online</Text>
               </View>
