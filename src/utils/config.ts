@@ -1,9 +1,9 @@
 // export const BASE_URL = 'https://v28lskqk-1111.inc1.devtunnels.ms/api';
 // export const BASE_URL = 'https://raunbn.com/backend/api';   
-export const BASE_URL = 'https://8e3c-2406-b400-75-d30c-b91c-e340-ca15-2aa1.ngrok-free.app/api';
+export const BASE_URL = 'https://ddc2-2406-b400-75-d30c-98ff-75a8-ec88-7a53.ngrok-free.app/api';
 
 
-export const SOCKET_URL = 'https://8e3c-2406-b400-75-d30c-b91c-e340-ca15-2aa1.ngrok-free.app'
+export const SOCKET_URL = 'https://ddc2-2406-b400-75-d30c-98ff-75a8-ec88-7a53.ngrok-free.app/'
 // export const SOCKET_URL='https://v28lskqk-7001.inc1.devtunnels.ms'
 export const IMAGE_URL = "https://raunbn.com/backend"
 

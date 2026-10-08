@@ -57,12 +57,13 @@ const formatDuration = (seconds: number) => {
 const apiCall = async (data: any) => {
   const storedToken = await StorageService.getItem('token');
   const tripId = await StorageService.getItem('tripId');  // actual orderId
-// console.log({tripId})
+  // console.log({tripId})
   if (!tripId) return;  // active order nahi hai to location bhejne ki zaroorat nahi
 
   try {
+
     await axios.post(
-      `${BASE_URL}/user/auth/updateLatLong`,
+      `${BASE_URL}/user/auth/updateLatLong?tripId=${tripId}&lat=${data.latitude}&long=${data.longitude}&timestamp=${data.timestamp}`,
       {
         lat: data.latitude,
         long: data.longitude,
@@ -103,11 +104,11 @@ export const startTracking = async () => {
       const now = new Date();
       const currentTime = Date.now();
       const payload = {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          timestamp: now.toISOString(),
-        };
-        // console.log(payload)
+        latitude: data.latitude,
+        longitude: data.longitude,
+        timestamp: now.toISOString(),
+      };
+      // console.log(payload)
 
       // 👉 FIRST LOCATION INIT
       if (!lastLocation) {
@@ -133,7 +134,7 @@ export const startTracking = async () => {
 
         lastSavedTime = currentTime;
 
-   
+
         await apiCall(payload);
       }
 

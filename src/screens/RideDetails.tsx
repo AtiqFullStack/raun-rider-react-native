@@ -169,9 +169,14 @@ export default function RideDetailsScreen() {
 
   const getButtonText = () => {
     if (isFoodOrder) {
-      if (foodOrderStatus === 'ready') return 'Picked Up Order';
-      if (foodOrderStatus === 'out_for_delivery') return 'Mark Delivered';
-      return 'Order Completed';
+      const s = String(foodOrderStatus || orderDetails?.orderStatus || '').toLowerCase();
+      if (['out_for_delivery', 'picked_up', 'in_transit'].includes(s)) {
+        return 'Mark Delivered';
+      }
+      if (['delivered', 'delivery_completed', 'completed'].includes(s)) {
+        return 'Order Completed';
+      }
+      return 'Picked Up Order';
     }
     const map: Record<string, string> = {
       assigned: 'Arrived at Pickup',
@@ -196,9 +201,11 @@ export default function RideDetailsScreen() {
   // ── Sync foodOrderStatus → tripStatusRef so fetchRoute uses correct phase ──
   useEffect(() => {
     if (!isFoodOrder) return;
+    const s = String(foodOrderStatus || orderDetails?.orderStatus || '').toLowerCase();
+    const isPickedUpPhase = ['out_for_delivery', 'picked_up', 'in_transit'].includes(s);
     // Map food order status to a key fetchRoute understands
-    tripStatusRef.current = foodOrderStatus === 'out_for_delivery' ? 'in_transit' : 'ready';
-  }, [foodOrderStatus, isFoodOrder]);
+    tripStatusRef.current = isPickedUpPhase ? 'DELIVERY_STARTED' : 'ready';
+  }, [foodOrderStatus, orderDetails?.orderStatus, isFoodOrder]);
 
   // ── Active statuses → rideStarted ─────────────────────────────────────────
   useEffect(() => {
@@ -369,8 +376,17 @@ export default function RideDetailsScreen() {
   // ── Update food order status (PICKED_UP / DELIVERED) ─────────────────────
   const updateFoodOrderStatus = async () => {
     if (!activeOrderId) return;
-    const nextStatus = foodOrderStatus === 'ready' ? 'PICKED_UP' : foodOrderStatus === 'out_for_delivery' ? 'DELIVERED' : null;
-    if (!nextStatus) { Toast.show({ type: 'info', text1: 'Order already completed' }); return; }
+    const s = String(foodOrderStatus || orderDetails?.orderStatus || '').toLowerCase();
+    const isPickedUpPhase = ['out_for_delivery', 'picked_up', 'in_transit'].includes(s);
+    const isDeliveredPhase = ['delivered', 'delivery_completed', 'completed'].includes(s);
+
+    if (isDeliveredPhase) {
+      Toast.show({ type: 'info', text1: 'Order already completed' });
+      return;
+    }
+
+    const nextStatus = !isPickedUpPhase ? 'PICKED_UP' : 'DELIVERED';
+
     try {
       const res: any = await updateFoodStatus(activeOrderId, nextStatus as 'PICKED_UP' | 'DELIVERED');
       const updatedOrder = res?.data?.data?.order ?? res?.data?.order ?? res?.data;
@@ -388,8 +404,8 @@ export default function RideDetailsScreen() {
         Storage.removeItem('tripId');
         navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Home' } }] });
       }
-    } catch {
-      Toast.show({ type: 'error', text1: 'Failed to update order status' });
+    } catch (e: any) {
+      Toast.show({ type: 'error', text1: e?.response?.data?.message || 'Failed to update order status' });
     }
   };
 

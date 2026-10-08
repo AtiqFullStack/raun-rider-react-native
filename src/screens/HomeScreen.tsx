@@ -741,7 +741,8 @@ const [syncLoading, setSyncLoading] = useState(false);
                       setIsDetailModalVisible(true);
                     }}
                     onGoToTrip={async() => {
-                      console.log(item)
+                      // console.log(item._id)
+                      // return
                       await StorageService.setItem('tripId',item._id)
                       navigation.navigate('RideDetails' as never, {
                         order: {
@@ -758,7 +759,7 @@ const [syncLoading, setSyncLoading] = useState(false);
           })()}
 
           {/* ── New Requests / Waiting Orders ── */}
-          {(() => {
+          {/* {(() => {
             const waitingOrders = orders.filter(
               o =>
                 !o.isAccepted &&
@@ -770,7 +771,7 @@ const [syncLoading, setSyncLoading] = useState(false);
             if (waitingOrders.length === 0) return null;
             return (
               <View style={{ marginTop: scale(20) }}>
-                {/* section header */}
+        
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionDotWrap}>
                     <View style={[styles.sectionDotOuter, { borderColor: '#3B82F6' }]}>
@@ -829,7 +830,7 @@ const [syncLoading, setSyncLoading] = useState(false);
                 ))}
               </View>
             );
-          })()}
+          })()} */}
 
       
             {selectedOrderForQuote && (

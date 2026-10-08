@@ -32,12 +32,13 @@ export default function TripInfoSheet({
   earning, buttonText, isCancellable, isFoodOrder, foodOrderStatus,
   onStatusPress, onCancel, onChat, onCall, onNavigate,
 }: Props) {
-  // Food order: before pickup show restaurant as destination, after show delivery address
+  const s = String(foodOrderStatus || '').toLowerCase();
+  const isFoodPickedUp = ['out_for_delivery', 'picked_up', 'in_transit'].includes(s);
   const pickupLabel = isFoodOrder
-    ? foodOrderStatus === 'out_for_delivery' ? 'Picked Up From' : 'Go to Restaurant'
+    ? (isFoodPickedUp ? 'Picked Up From' : 'Go to Restaurant')
     : 'Pickup';
   const dropLabel = isFoodOrder ? 'Deliver To' : 'Delivery';
-  const showDropSection = isFoodOrder ? foodOrderStatus === 'out_for_delivery' : true;
+  const showDropSection = isFoodOrder ? isFoodPickedUp : true;
   return (
     <ScrollView
       style={styles.container}
