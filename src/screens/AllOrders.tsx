@@ -124,7 +124,7 @@ export default function AllOrders() {
   const searchRef = useRef('');
   const cancelledOrderIdsRef = useRef<string[]>([]);
   const didRunInitialSearchEffect = useRef(false);
-console.log(selectedOrderForQuote)
+  console.log(selectedOrderForQuote)
 
   useEffect(() => {
     searchRef.current = search.trim();
@@ -160,9 +160,9 @@ console.log(selectedOrderForQuote)
       return;
     }
 
+    setLoading(true); // 🔥 Set loading before API call
     try {
       const location = await getCurrentLocation();
-      console.log(location)
       const query = searchQuery.trim();
 
       const formatOrders = (data: any): OrderUI[] => {
@@ -207,7 +207,7 @@ console.log(selectedOrderForQuote)
             pickup = i.pickup || { lat: undefined, lng: undefined, address: '' };
             drop = i.drop || { lat: undefined, lng: undefined, address: '' };
           }
-       
+
           const hasCoordinates = [pickup.lat, pickup.lng, drop.lat, drop.lng]
             .every(value => typeof value === 'number' && Number.isFinite(value));
           const tripDistanceKm = i.distanceKm ?? (hasCoordinates
@@ -224,21 +224,18 @@ console.log(selectedOrderForQuote)
 
           return {
             ...i,
-            // Keep the Mongo ID for actions; show the readable order number.
             _id: i._id,
             orderId: i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
             status: orderStatus,
             orderStatus,
             isAccepted,
             isSelectedByCustomer: i.isSelectedByCustomer,
-            // Mark food orders explicitly so the UI renders the right card
             serviceType: i._orderType || i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.loadRequestNumber ? 'parcel' : 'other'),
             customerId: i.customerId || {
               _id: i.userAuthId?._id || i.userAuthId || '',
               fullName: i.deliveryAddress?.contactName || i.userAuthId?.fullName || '',
               portraitPhoto: i.userAuthId?.portraitPhoto || '',
             },
-            // Preserve phone for active food order detail modal
             customerPhone: i.customerPhone
               || i.userAuthId?.fullPhoneNumber
               || (i.userAuthId?.countryCode && i.userAuthId?.phoneNumber
@@ -258,7 +255,7 @@ console.log(selectedOrderForQuote)
               paymentMode: i.paymentMethod || '',
             },
             distance: tripDistanceKm && typeof tripDistanceKm === 'number' && Number.isFinite(tripDistanceKm)
-              ? tripDistanceKm < 1 
+              ? tripDistanceKm < 1
                 ? `${Math.round(tripDistanceKm * 1000)}m`
                 : `${tripDistanceKm.toFixed(2)}km`
               : '',
@@ -266,54 +263,37 @@ console.log(selectedOrderForQuote)
         });
       };
 
-      const fetchOrdersByType = (type: 'ALL' | 'ACTIVE') =>
-        fetchData({
-          method: 'GET',
-          url: '/driver/orders/unified?sourceModel=all',
-          params: {
-            latitude: location.lat,
-            longitude: location.long,
-            status: type === 'ACTIVE' ? 'active' : 'all',
-            search: query,
-          },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+      // 🔥 SIMPLIFIED: Backend already filters by status (active/pending)
+      // Just pass the activeTab status to the API
+      const statusParam = activeTab === 'ACTIVE' ? 'active' : 'pending';
+      
+      console.log(`[API] Fetching ${statusParam} orders...`);
+      
+      const res = await fetchData({
+        method: 'GET',
+        url: '/driver/orders/unified?sourceModel=all',
+        params: {
+          latitude: location.lat,
+          longitude: location.long,
+          status: statusParam,
+          search: query,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      const res = await fetchOrdersByType('ALL');
-      let activeOrders: OrderUI[] = [];
+      console.log(`[API] Response for ${statusParam}:`, res.data || []);
 
-      try {
-        const activeRes = await fetchOrdersByType('ACTIVE');
-        activeOrders = formatOrders(activeRes.data || []).map(o => ({
-          ...o,
-          isAccepted: true, // these are confirmed active — driver owns them
-        }));
-      } catch (activeError) {
-        console.log('Active driver orders error', activeError);
-      }
+      const formatted = formatOrders(res.data || []);
 
-      const pendingOrders = formatOrders(res.data || []);
+      console.log(`[${statusParam.toUpperCase()}] Formatted ${formatted.length} orders`, formatted);
 
-      // Merge: active first, then pending. Deduplicate by _id (active wins).
-      const activeIds = new Set(activeOrders.map(o => o._id));
-      const formatted = [
-        ...activeOrders,
-        ...pendingOrders.filter(o => !activeIds.has(o._id)),
-      ];
-
-      console.log('Pending Response', res);
-      console.log('Active orders', activeOrders);
-
-      const uniqueOrders = formatted.filter(
-        (order, index, self) =>
-          index === self.findIndex(o => o._id === order._id),
-      );
-
-      const filteredOrders = uniqueOrders.filter(
+      const filteredOrders = formatted.filter(
         (order: OrderUI) => !cancelledOrderIdsRef.current.includes(order._id),
       );
+
+      console.log(`[${statusParam.toUpperCase()}] After filtering ${filteredOrders.length} orders`);
 
       setOrders(filteredOrders);
     } catch (err: any) {
@@ -329,7 +309,7 @@ console.log(selectedOrderForQuote)
     } finally {
       setLoading(false);
     }
-  }, [fetchData, isOnline, token]);
+  }, [fetchData, isOnline, token, activeTab]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -412,24 +392,25 @@ console.log(selectedOrderForQuote)
     'REJECTED',
   ];
 
-  const isActiveOrder = (order: OrderUI) =>
-    order.isAccepted === true ||
-    normalizeStatus(order.driverRequestStatus) === 'ACCEPTED' ||
-    activeStatuses.includes(normalizeStatus(order.status)) ||
-    activeStatuses.includes(normalizeStatus(order.orderStatus));
+  const isActiveOrder = (order: OrderUI) => {
+    console.log(order)
+    // 🔥 PRIMARY DECISION: Check if driverId is assigned (crucial filter)
+    // An order is ACTIVE only if driver has accepted it (driverId set)
+    const driverAssigned = Boolean(order.driverId || order.assignedDriverId);
+
+    if (!driverAssigned) {
+      return false; // Not assigned to this driver yet → stays PENDING
+    }
+  };
 
   const isClosedOrder = (order: OrderUI) =>
     normalizeStatus(order.driverRequestStatus) === 'REJECTED' ||
     closedStatuses.includes(normalizeStatus(order.status)) ||
     closedStatuses.includes(normalizeStatus(order.tripStatus));
 
-  const filteredOrders = orders.filter(order => {
-    if (activeTab === 'ACTIVE') {
-      return isActiveOrder(order);
-    }
-
-    return !isActiveOrder(order) && !isClosedOrder(order);
-  });
+  // 🔥 SIMPLIFIED: Backend already filters ACTIVE vs PENDING
+  // Just use orders directly from API response
+  const filteredOrders = orders;
 
   const goToTrip = async (order: OrderUI) => {
     await StorageService.setItem('tripId', order._id);

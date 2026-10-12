@@ -356,7 +356,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     merged.orderDetails?.package?.photos ||
     merged.orderDetails?.photos ||
     [];
-console.log(merged)
+  console.log(merged)
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -390,32 +390,32 @@ console.log(merged)
           >
             {/* ── Customer Banner ── */}
             <View style={styles.customerRow}>
-             {/* <Text> {merged.status}</Text> */}
-              {merged.status=="assigned" &&<>
-               <View style={styles.avatarWrap}>
-                {customerPhoto ? (
-                  <Image
-                    source={{ uri: `${IMAGE_URL}/${customerPhoto}` }}
-                    style={styles.avatar}
-                  />
-                ) : (
-                  <View style={[styles.avatar, styles.avatarFallback]}>
-                    <Text style={styles.avatarInitial}>
-                      {(customerName || '?')[0].toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.onlineDot} />
-              </View>
-              <View style={styles.customerInfo}>
-                <Text style={styles.customerName} numberOfLines={1}>
-                  {customerName}
-                </Text>
-                <Text style={styles.timeAgo}>
-                  {timeAgo(merged.createdAt)} • <Text style={{ color: Colors.primary, textTransform: 'uppercase' }}>{rawStatus}</Text>
-                </Text>
-              </View></> }
-             
+              {/* <Text> {merged.status}</Text> */}
+              {merged.status == "assigned" && <>
+                <View style={styles.avatarWrap}>
+                  {customerPhoto ? (
+                    <Image
+                      source={{ uri: `${IMAGE_URL}/${customerPhoto}` }}
+                      style={styles.avatar}
+                    />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarInitial}>
+                        {(customerName || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.onlineDot} />
+                </View>
+                <View style={styles.customerInfo}>
+                  <Text style={styles.customerName} numberOfLines={1}>
+                    {customerName}
+                  </Text>
+                  <Text style={styles.timeAgo}>
+                    {timeAgo(merged.createdAt)} • <Text style={{ color: Colors.primary, textTransform: 'uppercase' }}>{rawStatus}</Text>
+                  </Text>
+                </View></>}
+
               {displayAmount !== undefined && displayAmount !== null && (
                 <View style={styles.amountBadge}>
                   <Text style={styles.amountText}>

@@ -118,7 +118,7 @@ export default function HomeScreen() {
     useState<OrderUI | null>(null);
 
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
- 
+
   const [selectedOrderForQuote, setSelectedOrderForQuote] =
     React.useState<OrderUI | null>(null);
 
@@ -131,7 +131,7 @@ export default function HomeScreen() {
   const [enteredPhone, setEnteredPhone] = useState(
     user?.phone || user?.phoneNumber || '9122038950',
   );
-const [syncLoading, setSyncLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [paydetails, setPayDetails] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paynowInstructions, setPaynowInstructions] = useState('');
@@ -145,7 +145,7 @@ const [syncLoading, setSyncLoading] = useState(false);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const refreshHomeRef = useRef<() => void>(() => {});
+  const refreshHomeRef = useRef<() => void>(() => { });
 
   useEffect(() => {
     const getl = async () => {
@@ -219,29 +219,29 @@ const [syncLoading, setSyncLoading] = useState(false);
 
   const syncPendingPayments = async () => {
 
-  try {
+    try {
 
-    setSyncLoading(true);
+      setSyncLoading(true);
 
-    const res = await api.get(
-      '/payment/check-all-pending-payments'
-    );
+      const res = await api.get(
+        '/payment/check-all-pending-payments'
+      );
 
-    console.log(res.data, 'sync-result');
+      console.log(res.data, 'sync-result');
 
-    fetchDashboardData();
+      fetchDashboardData();
 
-  } catch (error) {
+    } catch (error) {
 
-    console.log(error);
+      console.log(error);
 
-  } finally {
+    } finally {
 
-    setSyncLoading(false);
+      setSyncLoading(false);
 
-  }
+    }
 
-};
+  };
 
   const handleReplenishPayment = async () => {
     setPayDetails(null);
@@ -499,11 +499,11 @@ const [syncLoading, setSyncLoading] = useState(false);
               String(orderStatus).toLowerCase()
             ) ||
             i.driverRequestStatus === 'ACCEPTED';
- console.log(i)
+          console.log(i)
           return {
             ...i,
             _id: i._id,
-            orderId:  i?.orderDetails?.loadRequestNumber||i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
+            orderId: i?.orderDetails?.loadRequestNumber || i.orderNumber || i.loadRequestNumber || i.orderId || i._id,
             status: orderStatus,
             orderStatus,
             isAccepted,
@@ -606,13 +606,13 @@ const [syncLoading, setSyncLoading] = useState(false);
         contentContainerStyle={{ flexGrow: 1 }}
         refreshControl={
           <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={[Colors.secondaryDark]} // Android
-          tintColor={Colors.secondaryDark} // iOS
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[Colors.secondaryDark]} // Android
+            tintColor={Colors.secondaryDark} // iOS
           />
         }
-    
+
       >
         <View style={{ flex: 1 }}>
           {/* ---------- Pending Approval Banner ---------- */}
@@ -635,20 +635,20 @@ const [syncLoading, setSyncLoading] = useState(false);
               {/* MIDDLE CONTENT */}
               <View style={styles.balanceContent}>
                 <View style={styles.balanceRow}>
-                <Text style={styles.balanceLabel}>Wallet Balance</Text>
+                  <Text style={styles.balanceLabel}>Wallet Balance</Text>
 
-      <TouchableOpacity
-                  style={styles.syncBtn}
-                  onPress={syncPendingPayments}
-                  disabled={syncLoading}
-                  activeOpacity={0.8}
-                >
-                  {syncLoading ? (
-                    <Ionicons name="sync" size={scale(16)} color={Colors.black} style={{ transform: [{ rotate: '45deg' }] }} />
-                  ) : (
-                    <Ionicons name="sync-outline" size={scale(16)} color={Colors.black} />
-                  )}
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.syncBtn}
+                    onPress={syncPendingPayments}
+                    disabled={syncLoading}
+                    activeOpacity={0.8}
+                  >
+                    {syncLoading ? (
+                      <Ionicons name="sync" size={scale(16)} color={Colors.black} style={{ transform: [{ rotate: '45deg' }] }} />
+                    ) : (
+                      <Ionicons name="sync-outline" size={scale(16)} color={Colors.black} />
+                    )}
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.balanceRow}>
                   <Text style={styles.balanceAmount} numberOfLines={1}>
@@ -667,12 +667,12 @@ const [syncLoading, setSyncLoading] = useState(false);
               </TouchableOpacity>
 
 
-        
+
 
             </View>
           )}
 
-        
+
 
           {/* ── Stat Cards ── */}
           <View style={styles.statsGrid}>
@@ -700,10 +700,20 @@ const [syncLoading, setSyncLoading] = useState(false);
           {(() => {
             const activeOrders = orders.filter(
               o =>
-                o.isAccepted ||
-                o.driverRequestStatus === 'ACCEPTED' ||
-                ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'in_progress'].includes(
-                  String(o.orderStatus || o.status).toLowerCase(),
+                o.driverId != null &&
+                (
+                  o.isAccepted ||
+                  o.driverRequestStatus === 'ACCEPTED' ||
+                  [
+                    'assigned',
+                    'picked_up',
+                    'in_transit',
+                    'out_for_delivery',
+                    'ready',
+                    'in_progress',
+                  ].includes(
+                    String(o.orderStatus || o.status).toLowerCase(),
+                  )
                 ),
             );
             if (activeOrders.length === 0) return null;
@@ -740,10 +750,10 @@ const [syncLoading, setSyncLoading] = useState(false);
                       setSelectedOrderForDetail(item);
                       setIsDetailModalVisible(true);
                     }}
-                    onGoToTrip={async() => {
+                    onGoToTrip={async () => {
                       // console.log(item._id)
                       // return
-                      await StorageService.setItem('tripId',item._id)
+                      await StorageService.setItem('tripId', item._id)
                       navigation.navigate('RideDetails' as never, {
                         order: {
                           ...item,
@@ -832,155 +842,155 @@ const [syncLoading, setSyncLoading] = useState(false);
             );
           })()} */}
 
-      
-            {selectedOrderForQuote && (
-              <SendQuoteModal
-                visible={true}
-                onClose={() => setSelectedOrderForQuote(null)}
-                orderMongoId={selectedOrderForQuote._id}
-                orderDetails={{
-                  distance: selectedOrderForQuote.distance,
-                  weight: selectedOrderForQuote.package.weight,
-                  itemName: selectedOrderForQuote.package.itemName,
-                  weightUnit: selectedOrderForQuote.package.weightUnit,
-                }}
-                defaultPrice={selectedOrderForQuote.estimatedPrice}
-                alreadySent={
-                  selectedOrderForQuote.driverRequestStatus === 'REQUESTED' ||
-                  sentQuotes.includes(selectedOrderForQuote._id)
-                }
-                onQuoteSuccess={orderId => addSentQuote(orderId)}
-              />
-            )}
 
-            {selectedOrderForDetail && (
-              <OrderDetailModal
-                visible={isDetailModalVisible}
-                order={selectedOrderForDetail}
-                sentQuotes={sentQuotes}
-                onClose={() => {
-                  setIsDetailModalVisible(false);
-                  setSelectedOrderForDetail(null);
-                }}
-              />
-            )}
+          {selectedOrderForQuote && (
+            <SendQuoteModal
+              visible={true}
+              onClose={() => setSelectedOrderForQuote(null)}
+              orderMongoId={selectedOrderForQuote._id}
+              orderDetails={{
+                distance: selectedOrderForQuote.distance,
+                weight: selectedOrderForQuote.package.weight,
+                itemName: selectedOrderForQuote.package.itemName,
+                weightUnit: selectedOrderForQuote.package.weightUnit,
+              }}
+              defaultPrice={selectedOrderForQuote.estimatedPrice}
+              alreadySent={
+                selectedOrderForQuote.driverRequestStatus === 'REQUESTED' ||
+                sentQuotes.includes(selectedOrderForQuote._id)
+              }
+              onQuoteSuccess={orderId => addSentQuote(orderId)}
+            />
+          )}
+
+          {selectedOrderForDetail && (
+            <OrderDetailModal
+              visible={isDetailModalVisible}
+              order={selectedOrderForDetail}
+              sentQuotes={sentQuotes}
+              onClose={() => {
+                setIsDetailModalVisible(false);
+                setSelectedOrderForDetail(null);
+              }}
+            />
+          )}
         </View>
-        
+
       </ScrollView>
 
-   <Modal
-  visible={isReplenishModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setIsReplenishModalVisible(false)}
->
-  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-    <View style={styles.modalOverlay}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
-        style={{ width: '100%' }}
+      <Modal
+        visible={isReplenishModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsReplenishModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{
-              paddingBottom: scale(30),
-            }}
-          >
-            <Text style={styles.modalTitle}>Replenish Balance</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
+              style={{ width: '100%' }}
+            >
+              <View style={styles.modalContainer}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{
+                    paddingBottom: scale(30),
+                  }}
+                >
+                  <Text style={styles.modalTitle}>Replenish Balance</Text>
 
-            <View style={styles.balanceInfoRow}>
-              <View
-                style={[
-                  styles.balanceInfoCard,
-                  styles.currentBalanceCard,
-                ]}
-              >
-                <Text style={styles.balanceCardLabel}>Current</Text>
+                  <View style={styles.balanceInfoRow}>
+                    <View
+                      style={[
+                        styles.balanceInfoCard,
+                        styles.currentBalanceCard,
+                      ]}
+                    >
+                      <Text style={styles.balanceCardLabel}>Current</Text>
 
-                <Text style={styles.balanceCardAmount}>
-                  ${currentBalance.toFixed(2)}
-                </Text>
+                      <Text style={styles.balanceCardAmount}>
+                        ${currentBalance.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.inputLabel}>Email</Text>
+
+                  <View style={styles.amountInputContainer}>
+                    <TextInput
+                      value={enteredEmail}
+                      onChangeText={setEnteredEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      style={[styles.amountInput, { paddingLeft: 0 }]}
+                      placeholder="Enter email"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+
+                  <Text style={styles.inputLabel}>Phone</Text>
+
+                  <View style={styles.amountInputContainer}>
+                    <TextInput
+                      value={enteredPhone}
+                      onChangeText={setEnteredPhone}
+                      keyboardType="phone-pad"
+                      style={[styles.amountInput, { paddingLeft: 0 }]}
+                      placeholder="Enter phone"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+
+                  <Text style={styles.inputLabel}>Top-up Amount</Text>
+
+                  <View style={styles.amountInputContainer}>
+                    <Text style={styles.dollarSign}>$</Text>
+
+                    <TextInput
+                      value={enteredAmount}
+                      onChangeText={setEnteredAmount}
+                      keyboardType="numeric"
+                      style={styles.amountInput}
+                      placeholder="0.00"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+
+                  <View style={styles.modalButtonRow}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() =>
+                        setIsReplenishModalVisible(false)
+                      }
+                    >
+                      <Text style={styles.cancelButtonText}>
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.confirmButton,
+                        paymentLoading && { opacity: 0.7 },
+                      ]}
+                      onPress={handleReplenishPayment}
+                      disabled={paymentLoading}
+                    >
+                      <Text style={styles.confirmButtonText}>
+                        {paymentLoading
+                          ? 'Processing...'
+                          : 'Confirm'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
               </View>
-            </View>
-
-            <Text style={styles.inputLabel}>Email</Text>
-
-            <View style={styles.amountInputContainer}>
-              <TextInput
-                value={enteredEmail}
-                onChangeText={setEnteredEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                style={[styles.amountInput, { paddingLeft: 0 }]}
-                placeholder="Enter email"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <Text style={styles.inputLabel}>Phone</Text>
-
-            <View style={styles.amountInputContainer}>
-              <TextInput
-                value={enteredPhone}
-                onChangeText={setEnteredPhone}
-                keyboardType="phone-pad"
-                style={[styles.amountInput, { paddingLeft: 0 }]}
-                placeholder="Enter phone"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <Text style={styles.inputLabel}>Top-up Amount</Text>
-
-            <View style={styles.amountInputContainer}>
-              <Text style={styles.dollarSign}>$</Text>
-
-              <TextInput
-                value={enteredAmount}
-                onChangeText={setEnteredAmount}
-                keyboardType="numeric"
-                style={styles.amountInput}
-                placeholder="0.00"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() =>
-                  setIsReplenishModalVisible(false)
-                }
-              >
-                <Text style={styles.cancelButtonText}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.confirmButton,
-                  paymentLoading && { opacity: 0.7 },
-                ]}
-                onPress={handleReplenishPayment}
-                disabled={paymentLoading}
-              >
-                <Text style={styles.confirmButtonText}>
-                  {paymentLoading
-                    ? 'Processing...'
-                    : 'Confirm'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
-  </TouchableWithoutFeedback>
-</Modal>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
       {paydetails && (
         <PayementWebView
           onRefresh={fetchDashboardData}
@@ -1224,8 +1234,8 @@ const styles = StyleSheet.create({
   balanceInfoCard: {
     flex: 1,
     backgroundColor: Colors.white,
-    flexDirection:"row",
-    justifyContent:"space-between",
+    flexDirection: "row",
+    justifyContent: "space-between",
     borderRadius: scale(16),
     padding: scale(14),
     shadowColor: '#b0b0c0',
@@ -1252,7 +1262,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Rubik-SemiBold',
     fontSize: fontScale(18),
     color: Colors.black,
-    textAlign:"center"
+    textAlign: "center"
   },
   inputLabel: {
     fontFamily: 'Rubik-Medium',
@@ -1396,7 +1406,7 @@ const styles = StyleSheet.create({
   },
   syncBtn: {
     // backgroundColor: Colors.primary,
-   paddingLeft: 10,
+    paddingLeft: 10,
     borderRadius: scale(8),
     justifyContent: 'center',
     alignItems: 'center',

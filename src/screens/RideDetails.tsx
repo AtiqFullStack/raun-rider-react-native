@@ -126,9 +126,9 @@ export default function RideDetailsScreen() {
   const lastCancelKeyRef = useRef<string | null>(null);
   const coordinate = useRef(new AnimatedRegion({ latitude: 0, longitude: 0, latitudeDelta: 0, longitudeDelta: 0 })).current;
   const currentOrder = orderDetails || order;
-
+console.log(currentOrder)
   // ── Derived values (food order response se map) ────────────────────────────
-  const isFoodOrder = String(currentOrder?.orderNumber || currentOrder?._id || order?._id || '').includes('R-FD');
+  const isFoodOrder = currentOrder && currentOrder.sourceModel=="FoodOrder"
   const { updateStatus: updateFoodStatus, cancelOrder: cancelFoodOrder } = useDriverFoodOrderService();
 
   // pickup = restaurant location, drop = deliveryAddress
@@ -169,15 +169,23 @@ export default function RideDetailsScreen() {
 
   const getButtonText = () => {
     if (isFoodOrder) {
+      // 🔥 FOOD ORDER: Simple 2-step flow
+      // Step 1: ready → Picked Up Order
+      // Step 2: out_for_delivery/picked_up/in_transit → Mark Delivered
+      // Done: delivered/completed → Order Completed
       const s = String(foodOrderStatus || orderDetails?.orderStatus || '').toLowerCase();
-      if (['out_for_delivery', 'picked_up', 'in_transit'].includes(s)) {
-        return 'Mark Delivered';
-      }
+      
       if (['delivered', 'delivery_completed', 'completed'].includes(s)) {
         return 'Order Completed';
       }
+      if (['out_for_delivery', 'picked_up', 'in_transit'].includes(s)) {
+        return 'Mark Delivered';
+      }
+      // Default for ready/assigned/any other state
       return 'Picked Up Order';
     }
+    
+    // 🔥 PARCEL ORDER: Full flow
     const map: Record<string, string> = {
       assigned: 'Arrived at Pickup',
       arrived: isCabOrder ? 'Passenger Boarded' : 'Load Collected',

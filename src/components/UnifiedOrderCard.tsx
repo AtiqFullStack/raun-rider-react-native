@@ -51,7 +51,7 @@ interface UnifiedOrderCardProps {
 }
 
 const SERVICE_CONFIG = {
-  food:   { label: 'FOOD',   bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
+  food: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
   parcel: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
 };
 
@@ -95,11 +95,11 @@ export default function UnifiedOrderCard({
   isAccepted: isAcceptedProp,
   isSelectedByCustomer: isSelectedProp,
 }: UnifiedOrderCardProps) {
-  console.log({orderStatus,_orderType,parcelStatus});
+  console.log({ orderStatus, _orderType, parcelStatus });
   const [actionLoading, setActionLoading] = React.useState<'accept' | 'ignore' | null>(null);
   const isFoodOrder = _orderType === 'food';
   const isParcelRequest = _orderType === 'parcel';
-  
+
   const svc = SERVICE_CONFIG[_orderType] || SERVICE_CONFIG.parcel;
   const trackingNo = isFoodOrder ? orderNumber : (loadRequestNumber || orderNumber);
   const currentStatus = isFoodOrder ? orderStatus : (parcelStatus || orderStatus);
@@ -141,14 +141,14 @@ export default function UnifiedOrderCard({
   // ── Action handlers ──
   const handleAccept = async () => {
     if (!_id) { Toast.show({ type: 'error', text1: 'Order ID missing' }); return; }
-  
+
     // For parcel orders where customer hasn't selected this driver yet → open Send Quote modal directly
     // This covers: submitted, finding_drivers, quoting statuses
     const parcelQuoteStatuses = ['submitted', 'finding_drivers', 'quoting'];
-    console.log({parcelQuoteStatuses,isParcelRequest ,currentStatus, isSelectedByCustomer})
+    console.log({ parcelQuoteStatuses, isParcelRequest, currentStatus, isSelectedByCustomer })
     // return
-    if (currentStatus=="pending" && isParcelRequest) {
-      
+    if (currentStatus == "pending" && isParcelRequest) {
+
       // Prefer dedicated quote callback; fall back to detail modal
       if (onSendQuote) {
         onSendQuote();
@@ -275,7 +275,7 @@ export default function UnifiedOrderCard({
       )}
 
       {/* ── Action buttons ── */}
-      {isOrderActive ? (
+      {isOrderActive && Boolean(driverId || assignedDriverId) ? (
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.acceptBtn, { backgroundColor: '#10B981', shadowColor: '#10B981' }]}
@@ -307,8 +307,8 @@ export default function UnifiedOrderCard({
               {actionLoading === 'accept'
                 ? 'Accepting…'
                 : isSelectedByCustomer || isFoodOrder
-                ? 'Accept Order'
-                : 'Send Quote'}
+                  ? 'Accept Order'
+                  : 'Send Quote'}
             </Text>
           </TouchableOpacity>
         </View>
