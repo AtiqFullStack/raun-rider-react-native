@@ -742,7 +742,7 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
 
-          {/* ── Active Orders ── */}
+          {/* ── Active Orders / Empty State ── */}
           {(() => {
             const activeOrders = orders.filter(
               o =>
@@ -762,54 +762,102 @@ export default function HomeScreen() {
                   )
                 ),
             );
-            if (activeOrders.length === 0) return null;
+            
             return (
               <View style={{ marginTop: scale(20) }}>
-                {/* section header */}
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionDotWrap}>
-                    <View style={[styles.sectionDotOuter, { borderColor: '#22C55E' }]}>
-                      <View style={[styles.sectionDotInner, { backgroundColor: '#22C55E' }]} />
+                {activeOrders.length > 0 ? (
+                  <>
+                    {/* section header */}
+                    <View style={styles.sectionHeader}>
+                      <View style={styles.sectionDotWrap}>
+                        <View style={[styles.sectionDotOuter, { borderColor: '#22C55E' }]}>
+                          <View style={[styles.sectionDotInner, { backgroundColor: '#22C55E' }]} />
+                        </View>
+                      </View>
+                      <Text style={styles.sectionTitle}>Active Orders</Text>
+                      <View style={styles.sectionBadge}>
+                        <Text style={styles.sectionBadgeText}>{activeOrders.length}</Text>
+                      </View>
+                    </View>
+
+                    {activeOrders.map(item => (
+                      <ActiveOrderCard
+                        key={item._id}
+                        orderId={item.orderId || item._id}
+                        serviceType={item.serviceId?.serviceType || item?.serviceId?.name}
+                        customerName={item.customerId?.fullName || '—'}
+                        pickupAddress={item.pickup?.address || '—'}
+                        dropAddress={item.drop?.address || '—'}
+                        distance={item.distance}
+                        totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.finalPrice}
+                        currency={item.currency}
+                        orderStatus={item.orderStatus || item.status || 'confirmed'}
+                        paymentStatus={item.paymentStatus}
+                        createdAt={item.createdAt}
+                        onPress={() => {
+                          setSelectedOrderForDetail(item);
+                          setIsDetailModalVisible(true);
+                        }}
+                        onGoToTrip={async () => {
+                          await StorageService.setItem('tripId', item._id)
+                          navigation.navigate('RideDetails' as never, {
+                            order: {
+                              ...item,
+                              tripId: item.tripId,
+                              tripStatus: item.tripStatus || 'CREATED',
+                            },
+                          } as never);
+                        }}
+                      />
+                    ))}
+                  </>
+                ) : (
+                  <View style={styles.emptyStateContainer}>
+                    <View style={styles.emptyStateIconBox}>
+                      <Ionicons 
+                        name="rocket-outline" 
+                        size={scale(48)} 
+                        color={Colors.secondaryDark}
+                      />
+                    </View>
+                    <Text style={styles.emptyStateTitle}>No Active Orders</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      {isOnline 
+                        ? 'You\'re online and ready! New orders will appear here.'
+                        : 'Go online to start receiving orders.'}
+                    </Text>
+                    
+                    <View style={styles.quickActionsContainer}>
+                      <TouchableOpacity 
+                        style={[styles.quickActionBtn, { backgroundColor: Colors.secondaryDark }]}
+                        onPress={() => navigation.navigate('AllOrders' as never)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons 
+                          name="document-outline" 
+                          size={scale(18)} 
+                          color={Colors.white}
+                          style={{ marginRight: scale(8) }}
+                        />
+                        <Text style={styles.quickActionText}>Browse Orders</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={[styles.quickActionBtn, { backgroundColor: Colors.yellowish }]}
+                        onPress={() => navigation.navigate('History' as never)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons 
+                          name="time-outline" 
+                          size={scale(18)} 
+                          color={Colors.white}
+                          style={{ marginRight: scale(8) }}
+                        />
+                        <Text style={styles.quickActionText}>View History</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
-                  <Text style={styles.sectionTitle}>Active Orders</Text>
-                  <View style={styles.sectionBadge}>
-                    <Text style={styles.sectionBadgeText}>{activeOrders.length}</Text>
-                  </View>
-                </View>
-
-                {activeOrders.map(item => (
-                  <ActiveOrderCard
-                    key={item._id}
-                    orderId={item.orderId || item._id}
-                    serviceType={item.serviceId?.serviceType || item?.serviceId?.name}
-                    customerName={item.customerId?.fullName || '—'}
-                    pickupAddress={item.pickup?.address || '—'}
-                    dropAddress={item.drop?.address || '—'}
-                    distance={item.distance}
-                    totalAmount={item.totalAmount?.$numberDecimal ?? item.totalAmount ?? item.finalPrice}
-                    currency={item.currency}
-                    orderStatus={item.orderStatus || item.status || 'confirmed'}
-                    paymentStatus={item.paymentStatus}
-                    createdAt={item.createdAt}
-                    onPress={() => {
-                      setSelectedOrderForDetail(item);
-                      setIsDetailModalVisible(true);
-                    }}
-                    onGoToTrip={async () => {
-                      // console.log(item._id)
-                      // return
-                      await StorageService.setItem('tripId', item._id)
-                      navigation.navigate('RideDetails' as never, {
-                        order: {
-                          ...item,
-                          tripId: item.tripId,
-                          tripStatus: item.tripStatus || 'CREATED',
-                        },
-                      } as never);
-                    }}
-                  />
-                ))}
+                )}
               </View>
             );
           })()}
@@ -1545,6 +1593,59 @@ const styles = StyleSheet.create({
   },
 
   // ── empty state ───────────────────────────────────────────────────────────
+  emptyStateContainer: {
+    alignItems: 'center',
+    paddingVertical: scale(40),
+    paddingHorizontal: scale(20),
+    backgroundColor: Colors.lightgreen,
+    borderRadius: scale(16),
+    borderWidth: 1,
+    borderColor: Colors.green,
+    borderStyle: 'dashed',
+  },
+  emptyStateIconBox: {
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: scale(16),
+    borderWidth: 2,
+    borderColor: Colors.secondaryDark,
+  },
+  emptyStateTitle: {
+    fontFamily: 'Rubik-SemiBold',
+    fontSize: fontScale(16),
+    color: Colors.black,
+    marginBottom: scale(8),
+    textAlign: 'center',
+  },
+  emptyStateSubtitle: {
+    fontFamily: 'Rubik-Regular',
+    fontSize: fontScale(13),
+    color: Colors.Textgray,
+    textAlign: 'center',
+    marginBottom: scale(20),
+    lineHeight: fontScale(18),
+  },
+  quickActionsContainer: {
+    width: '100%',
+    gap: scale(12),
+  },
+  quickActionBtn: {
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(16),
+    borderRadius: scale(10),
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  quickActionText: {
+    fontFamily: 'Rubik-Medium',
+    fontSize: fontScale(13),
+    color: Colors.white,
+  },
   emptyBox: {
     alignItems: 'center',
     paddingVertical: scale(24),
