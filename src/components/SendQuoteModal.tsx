@@ -120,12 +120,12 @@ console.log(orderDetails)
                   </Text>
                 </View>
               )}
-              {orderDetails.itemName && (
+              {/* {orderDetails.itemName && (
                 <View style={styles.infoRow}>
                   <Text style={styles.label}>Items</Text>
                   <Text style={styles.value}>{orderDetails.itemName}</Text>
                 </View>
-              )}
+              )} */}
             </View>
 
             {/* ── fare input section ── */}

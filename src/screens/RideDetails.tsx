@@ -672,7 +672,8 @@ console.log(nextStatus)
               style={styles.confirmBtn}
               onPress={() => {
                 setCompleteModalVisible(false);
-                navigation.navigate('TripComplete', {
+                // navigation.navigate('RatingScreen', {
+                navigation.navigate('RatingScreen', {
                   trip: {
                     tripId: activeTripId, orderId: activeOrderId,
                     customerName: order?.customerId?.fullName || order?.sender?.name,

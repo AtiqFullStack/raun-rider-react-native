@@ -356,7 +356,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     merged.orderDetails?.package?.photos ||
     merged.orderDetails?.photos ||
     [];
-  console.log(merged)
+  console.log(order)
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -515,7 +515,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             )}
 
             {/* ── Parcel Contacts ── */}
-            {isParcelOrder && (
+            {(isParcelOrder && order.status!=="pending") && (
               <Section title="CONTACTS">
                 <InfoRow
                   label="Sender"
@@ -539,14 +539,14 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             {/* ── Parcel Package Details ── */}
             {isParcelOrder && (
               <Section title="PACKAGE DETAILS">
-                <InfoRow
+                {/* <InfoRow
                   label="Items"
                   value={
                     merged.loadItems && merged.loadItems.length > 0
                       ? `${merged.loadItems.length}x item${merged.loadItems.length > 1 ? 's' : ''}`
                       : merged.package?.itemName || merged.orderDetails?.package?.itemName
                   }
-                />
+                /> */}
                 <InfoRow
                   label="Weight"
                   value={

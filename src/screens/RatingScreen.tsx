@@ -126,20 +126,25 @@ console.log(trip, "rating screnn trip")
   ]);
 
   const handleSubmitRating = async () => {
-    if (!tripId) {
+    if (!trip.orderId) {
       Toast.show({
         type: 'error',
-        text1: 'Trip ID not found',
+        text1: 'Order ID not found',
       });
       return;
     }
 
     setLoading(true);
-    try {
-      await api.post('/user/rating/submit-rating', {
-        tripId,
+    console.log({
+        orderId:trip.orderId,
         rating,
-        comment,
+        review:comment,
+      })
+    try {
+      await api.post('/rating/create', {
+        orderId:trip.orderId,
+        rating,
+        review:comment,
       });
       Toast.show({
         type: 'success',

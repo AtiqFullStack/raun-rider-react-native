@@ -79,7 +79,6 @@ const HistoryScreen: React.FC = () => {
   // ── Build query params ────────────────────────────────────────────────────
   const buildParams = useCallback((): Record<string, string> => {
     const p: Record<string, string> = {};
-
     // status
     if (tab === 'Completed') p.status = 'delivered';
     if (tab === 'Cancelled') p.status = 'cancelled';
