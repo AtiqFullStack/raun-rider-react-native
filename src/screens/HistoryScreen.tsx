@@ -81,8 +81,8 @@ const HistoryScreen: React.FC = () => {
     const p: Record<string, string> = {};
 
     // status
-    if (tab === 'Completed') p.status = 'DELIVERED';
-    if (tab === 'Cancelled') p.status = 'CANCELLED';
+    if (tab === 'Completed') p.status = 'delivered';
+    if (tab === 'Cancelled') p.status = 'cancelled';
 
     // search
     if (search.trim()) p.search = search.trim();
@@ -98,17 +98,91 @@ const HistoryScreen: React.FC = () => {
     return p;
   }, [tab, search, dateFilter, customFrom, customTo]);
 
+  // ── Transform API response to HistoryItem ────────────────────────────────
+  const transformToHistoryItem = (item: any): HistoryItem => {
+    const orderDetails = item.orderDetails || {};
+    const orderType = item._orderType || 'food';
+    
+    // Helper to format date/time
+    const formatDate = (dateStr: string | undefined) => {
+      if (!dateStr) return { date: '—', time: '—' };
+      const d = new Date(dateStr);
+      return {
+        date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+        time: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      };
+    };
+
+    const deliveredDate = formatDate(item.deliveredAt);
+    const statusMap: Record<string, 'Completed' | 'Cancelled' | 'Active'> = {
+      delivered: 'Completed',
+      cancelled: 'Cancelled',
+      pending: 'Active',
+    };
+
+    // Determine delivery fee and amount
+    let deliveryFee = 0;
+    let amount = 0;
+
+    if (orderType === 'food') {
+      // For food orders: deliveryFee from orderDetails
+      deliveryFee = parseFloat(orderDetails.deliveryFee?.$numberDecimal || '0') || 0;
+      amount = parseFloat(orderDetails.totalAmount?.$numberDecimal || '0') || 0;
+    } else if (orderType === 'parcel') {
+      // For parcel: price from myQuote
+      const quotePrice = item.myQuote?.price || 0;
+      deliveryFee = quotePrice;
+      amount = item.totalAmount || quotePrice;
+    }
+
+    return {
+      id: item._id,
+      orderId: item.sourceId,
+      orderNumber: item.orderNumber || orderDetails.loadRequestNumber || '—',
+      type: 'food',
+      status: statusMap[item.status?.toLowerCase()] || 'Active',
+      deliveryFee,
+      amount,
+      serviceName: orderType === 'food' ? 'Food Delivery' : 'Parcel Delivery',
+      pickupAddress: item.pickup?.address || orderDetails.pickupLocation?.address || '—',
+      dropoffAddress: item.drop?.address || orderDetails.dropoffLocation?.address || '—',
+      restaurantName: item.restaurantId?.name || orderDetails.restaurantId?.name || '—',
+      customerName: orderDetails.userAuthId?.fullPhoneNumber || '—',
+      date: deliveredDate.date,
+      time: deliveredDate.time,
+      deliveredAt: item.deliveredAt,
+      cancelledAt: item.cancelledAt,
+      acceptedAt: item.assignedAt,
+    };
+  };
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
       const res: any = await getHistory(buildParams());
       const payload  = res?.data?.data ?? res?.data ?? res;
-      setSummary(payload?.summary ?? EMPTY_SUMMARY);
-      setItems(payload?.history ?? []);
+      
+      // Transform API response to HistoryItem[]
+      const orders = Array.isArray(payload) ? payload : (payload?.orders ?? []);
+      const transformedItems = orders.map(transformToHistoryItem);
+      
+      setItems(transformedItems);
+      
+      // Calculate summary
+      const summary = {
+        totalOrders: transformedItems.length,
+        deliveredOrders: transformedItems.filter(o => o.status === 'Completed').length,
+        cancelledOrders: transformedItems.filter(o => o.status === 'Cancelled').length,
+        totalEarnings: transformedItems
+          .filter(o => o.status === 'Completed')
+          .reduce((sum, o) => sum + o.deliveryFee, 0),
+      };
+      setSummary(summary);
     } catch (e: any) {
       console.error('[HistoryScreen] fetchHistory:', e?.message);
       setItems([]);
+      setSummary(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
     }
@@ -181,7 +255,7 @@ const HistoryScreen: React.FC = () => {
           { label: 'Orders',    value: summary.totalOrders,                                 color: Colors.primary },
           { label: 'Done',      value: summary.deliveredOrders,                             color: '#22C55E'      },
           { label: 'Cancelled', value: summary.cancelledOrders,                             color: '#EF4444'      },
-          { label: 'Earned',    value: `$${Number(summary.totalEarnings).toFixed(0)}`,      color: Colors.black   },
+          { label: 'Earned',    value: `$${Number(summary?.totalEarnings)?.toFixed(0)}`,      color: Colors.black   },
         ].map((k, i, arr) => (
           <React.Fragment key={k.label}>
             <View style={styles.kpiItem}>
@@ -290,7 +364,7 @@ const HistoryScreen: React.FC = () => {
               <Text style={[styles.feeValue, {
                 color: item.status === 'Completed' ? '#22C55E' : Colors.Textgray,
               }]}>
-                {item.status === 'Cancelled' ? '—' : `$${item.deliveryFee.toFixed(2)}`}
+                {item.status === 'Cancelled' ? '—' : `$${item?.deliveryFee?.toFixed(2)}`}
               </Text>
               <Text style={styles.feeLabel}>Delivery Fee</Text>
             </View>
@@ -359,7 +433,7 @@ const HistoryScreen: React.FC = () => {
             <View style={styles.sheetAmountBox}>
               <Text style={styles.sheetAmountLabel}>Delivery Fee Earned</Text>
               <Text style={[styles.sheetAmountValue, { color: selectedItem.status === 'Completed' ? '#22C55E' : Colors.Textgray }]}>
-                {selectedItem.status === 'Cancelled' ? '—' : `$${selectedItem.deliveryFee.toFixed(2)}`}
+                {selectedItem.status === 'Cancelled' ? '—' : `$${selectedItem?.deliveryFee?.toFixed(2)}`}
               </Text>
             </View>
 
@@ -393,8 +467,8 @@ const HistoryScreen: React.FC = () => {
                 { label: 'Service',      value: selectedItem.serviceName },
                 { label: 'Restaurant',   value: selectedItem.restaurantName },
                 { label: 'Customer',     value: selectedItem.customerName },
-                { label: 'Delivery Fee', value: selectedItem.status === 'Cancelled' ? '—' : `$${selectedItem.deliveryFee.toFixed(2)}` },
-                { label: 'Order Total',  value: `$${selectedItem.amount.toFixed(2)}` },
+                { label: 'Delivery Fee', value: selectedItem.status === 'Cancelled' ? '—' : `$${selectedItem?.deliveryFee?.toFixed(2)}` },
+                { label: 'Order Total',  value: `$${selectedItem?.amount?.toFixed(2)}` },
                 { label: 'Date',         value: selectedItem.date },
                 { label: 'Time',         value: selectedItem.time },
                 selectedItem.deliveredAt
