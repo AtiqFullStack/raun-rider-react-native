@@ -350,12 +350,25 @@ export default function HomeScreen() {
 
   const fetchDashboardData = async () => {
     try {
-      const res = await api.get('/driver/profile');
-      if (res.data?.success && res.data?.data) {
-        setDashboardData(res.data.data);
+      const res = await api.get('/user/auth/profile');
+      console.log('[Dashboard API Response]', res.data);
+      
+      if (res.data?.success) {
+        const driverData = res.data?.data?.driver || res.data?.data;
+        console.log('[Dashboard Data Extracted]', driverData);
+        
+        if (driverData) {
+          setDashboardData({
+            todayEarnings: driverData.todayEarnings || 0,
+            totalTrips: driverData.totalTrips || 0,
+            walletBalance: driverData.walletBalance || 0,
+            totalRating: driverData.totalRating || 0,
+            totalOnlineMinutes: driverData.totalOnlineMinutes || 0,
+          });
+        }
       }
-    } catch (e) {
-      // Ignore dashboard fetch error gracefully
+    } catch (e: any) {
+      console.error('[Dashboard Error]', e.message, e.response?.data);
     }
   };
 
@@ -363,20 +376,32 @@ export default function HomeScreen() {
     {
       label: "Earned Today",
       value: `$${Number(dashboardData?.todayEarnings || 0).toFixed(2)}`,
-      icon: <DollarSvg width={scale(22)} height={scale(22)} />,
+      subValue: `Total: $${Number(dashboardData?.totalEarnings || 0).toFixed(2)}`,
+      icon: <Text style={{ fontSize: fontScale(17) }}>💰</Text>,
       iconBg: '#22C55E22',
       iconColor: '#22C55E',
-      // accent: '#22C55E',
+      gradient: ['#22C55E', '#16A34A'],
       goto: 'Transactions',
     },
     {
-      label: 'Trips Completed',
+      label: 'Orders Completed',
       value: `${dashboardData?.totalTrips ?? 0}`,
-      icon: <TruckSvg width={scale(22)} height={scale(22)} />,
+      subValue: 'All time',
+      icon: <Text style={{ fontSize: fontScale(17) }}>🚚</Text>,
       iconBg: '#3B82F622',
       iconColor: '#3B82F6',
-      // accent: '#3B82F6',
-      goto: null,
+      gradient: ['#3B82F6', '#1D4ED8'],
+      goto: 'History',
+    },
+    {
+      label: 'Average Rating',
+      value: `${dashboardData?.totalRating ? dashboardData.totalRating.toFixed(1) : '0.0'}⭐`,
+      subValue: `${dashboardData?.totalRating ? '(' + Math.round(dashboardData.totalRating * 10) / 10 + '/5.0)' : '(0/5.0)'}`,
+      icon: <Text style={{ fontSize: fontScale(17) }}>⭐</Text>,
+      iconBg: '#F59E0B22',
+      iconColor: '#F59E0B',
+      gradient: ['#F59E0B', '#D97706'],
+      goto: 'History',
     },
   ];
 
@@ -626,13 +651,13 @@ export default function HomeScreen() {
 
           {/* --------------------Available Balance------------------------- */}
 
-          {user?.driverType === 'INDIVIDUAL' && (
-            <View style={[MY_STYLES.CARD, styles.CardContainer]}>
+   
+            {/* <View style={[MY_STYLES.CARD, styles.CardContainer]}>
               <View style={styles.iconContainer}>
                 <WalletIcon height={fontScale(24)} width={fontScale(22)} />
               </View>
 
-              {/* MIDDLE CONTENT */}
+      
               <View style={styles.balanceContent}>
                 <View style={styles.balanceRow}>
                   <Text style={styles.balanceLabel}>Wallet Balance</Text>
@@ -655,7 +680,7 @@ export default function HomeScreen() {
                     ${(dashboardData?.walletBalance ?? 0).toFixed(2)}
                   </Text>
 
-                  {/* <Text style={styles.balanceStatus}>(low)</Text> */}
+                 
                 </View>
               </View>
 
@@ -669,13 +694,19 @@ export default function HomeScreen() {
 
 
 
-            </View>
-          )}
+            </View> */}
+    
 
 
 
-          {/* ── Stat Cards ── */}
-          <View style={styles.statsGrid}>
+          {/* ── Stat Cards - Horizontal Scrollable ── */}
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            style={styles.statsScrollView}
+            contentContainerStyle={styles.statsGrid}
+          >
             {statCards.map((card, i) => (
               <TouchableOpacity
                 key={i}
@@ -683,18 +714,33 @@ export default function HomeScreen() {
                 style={styles.statCard}
                 onPress={() => card.goto && navigation.navigate(card.goto as never)}
               >
-                {/* accent left bar */}
-                <View style={[styles.accentBar, { backgroundColor: card.accent }]} />
+                {/* Gradient background */}
+                <View style={[styles.cardGradient, { 
+                  backgroundColor: card.gradient ? card.gradient[0] : card.iconColor,
+                  opacity: 0.08 
+                }]} />
 
+                {/* Icon */}
                 <View style={[styles.statIconBox, { backgroundColor: card.iconBg }]}>
                   {card.icon}
                 </View>
 
-                <Text style={styles.statValue} numberOfLines={1}>{card.value}</Text>
-                <Text style={styles.statLabel} numberOfLines={1}>{card.label}</Text>
+                {/* Content */}
+                <View style={styles.statContent}>
+                  <Text style={styles.statLabel} numberOfLines={1}>{card.label}</Text>
+                  <Text style={styles.statValue} numberOfLines={1}>{card.value}</Text>
+                  {card.subValue && <Text style={styles.statSubValue} numberOfLines={1}>{card.subValue}</Text>}
+                </View>
+
+                {/* Badge for top right */}
+                {card.goto && (
+                  <View style={styles.cardBadge}>
+                    <Text style={styles.cardBadgeText}>→</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
           {/* ── Active Orders ── */}
           {(() => {
@@ -1153,25 +1199,39 @@ const styles = StyleSheet.create({
     fontSize: fontScale(11),
     color: Colors.white,
   },
+  statsScrollView: {
+    height: scale(120),
+    maxHeight:scale(140)
+  },
   statsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: scale(10),
-    marginVertical: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(4),
   },
   statCard: {
     backgroundColor: Colors.white,
-    borderRadius: scale(16),
-    padding: scale(16),
-    width: '47%',
+    borderRadius: scale(14),
+    padding: scale(10),
+    minWidth:"30%",
+    // width: scale(120),
+    // height: scale(110),
     overflow: 'hidden',
-    elevation: 3,
+    elevation: 5,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: '#F3F4F6',
+  },
+  cardGradient: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    borderRadius: scale(18),
   },
   accentBar: {
     position: 'absolute',
@@ -1183,22 +1243,55 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: scale(16),
   },
   statIconBox: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: scale(14),
+    width: scale(30),
+    height: scale(32),
+    borderRadius: scale(50),
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: scale(12),
+    marginBottom: scale(6),
+    zIndex: 1,
+  },
+  statContent: {
+    zIndex: 1,
+    flex: 1,
   },
   statValue: {
     fontFamily: 'Rubik-Bold',
-    fontSize: fontScale(22),
+    fontSize: fontScale(16),
     color: Colors.black,
-    marginBottom: scale(4),
+    marginBottom: scale(1),
+    lineHeight: fontScale(18),
+  },
+  statSubValue: {
+    fontFamily: 'Rubik-Regular',
+    fontSize: fontScale(9),
+    color: Colors.Textgray,
+    marginTop: scale(1),
+    lineHeight: fontScale(12),
   },
   statLabel: {
-    fontFamily: 'Rubik-Regular',
-    fontSize: fontScale(13),
+    fontFamily: 'Rubik-Medium',
+    fontSize: fontScale(8),
+    color: Colors.Textgray,
+    marginBottom: scale(4),
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  cardBadge: {
+    position: 'absolute',
+    top: scale(4),
+    right: scale(4),
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  cardBadgeText: {
+    fontFamily: 'Rubik-SemiBold',
+    fontSize: fontScale(12),
     color: Colors.Textgray,
   },
   modalOverlay: {
