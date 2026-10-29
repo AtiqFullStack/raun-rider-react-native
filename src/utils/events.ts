@@ -4,5 +4,6 @@ export const AppEvents = DeviceEventEmitter;
 
 export const EVENTS = {
   REFRESH_ORDERS: 'REFRESH_ORDERS',
+  NEW_TAXI_RIDE: 'NEW_TAXI_RIDE',
   NEW_FOOD_ORDER: 'NEW_FOOD_ORDER', // navigate to Trips tab → PENDING
 };

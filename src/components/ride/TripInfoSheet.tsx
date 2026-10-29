@@ -14,7 +14,9 @@ interface Props {
   orderInstruction: string;
   orderNumber?: string | null;
   customerName?: string;
-  earning: number;
+  earning: number | null;
+  isTaxiRide?: boolean;
+  statusDisabled?: boolean;
   tripStatus: string;
   isFoodOrder?: boolean;
   foodOrderStatus?: string;
@@ -29,7 +31,7 @@ interface Props {
 
 export default function TripInfoSheet({
   pickup, drop, orderTitle, orderInstruction, orderNumber, customerName,
-  earning, buttonText, isCancellable, isFoodOrder, foodOrderStatus,
+  earning, isTaxiRide, statusDisabled, buttonText, isCancellable, isFoodOrder, foodOrderStatus,
   onStatusPress, onCancel, onChat, onCall, onNavigate,
 }: Props) {
   const s = String(foodOrderStatus || '').toLowerCase();
@@ -37,7 +39,7 @@ export default function TripInfoSheet({
   const pickupLabel = isFoodOrder
     ? (isFoodPickedUp ? 'Picked Up From' : 'Go to Restaurant')
     : 'Pickup';
-  const dropLabel = isFoodOrder ? 'Deliver To' : 'Delivery';
+  const dropLabel = isFoodOrder ? 'Deliver To' : isTaxiRide ? 'Drop off' : 'Delivery';
   const showDropSection = isFoodOrder ? isFoodPickedUp : true;
   return (
     <ScrollView
@@ -98,7 +100,7 @@ export default function TripInfoSheet({
       {/* Trip Details */}
       <Text style={styles.sectionTitle}>Trip Details</Text>
       <View style={styles.card}>
-        <Text style={styles.detailLabel}>Order</Text>
+        <Text style={styles.detailLabel}>{isTaxiRide ? 'Ride' : 'Order'}</Text>
         <Text style={styles.detailValue}>{orderTitle}</Text>
         <View style={styles.divider} />
         <Text style={styles.detailLabel}>Instruction</Text>
@@ -106,14 +108,14 @@ export default function TripInfoSheet({
       </View>
 
       {/* Earning */}
-      <View style={[styles.card, styles.earningRow]}>
+      {earning != null && Number.isFinite(earning) && <View style={[styles.card, styles.earningRow]}>
         <Text style={styles.earningLabel}>Earning</Text>
         <Text style={styles.earningAmount}>${earning.toFixed(2)}</Text>
-      </View>
+      </View>}
 
       {/* Buttons */}
       <View style={styles.btnRow}>
-        <TouchableOpacity style={styles.statusBtn} onPress={onStatusPress}>
+        <TouchableOpacity disabled={statusDisabled} style={[styles.statusBtn, statusDisabled && styles.disabledBtn]} onPress={onStatusPress}>
           <Text style={styles.statusBtnText}>{buttonText}</Text>
         </TouchableOpacity>
         {isCancellable && (
@@ -164,6 +166,7 @@ const styles = StyleSheet.create({
     height: scale(52), borderRadius: scale(12),
     justifyContent: 'center', alignItems: 'center',
   },
+  disabledBtn: { opacity: 0.5 },
   statusBtnText: { color: Colors.textLight, fontFamily: 'Rubik-SemiBold', fontSize: fontScale(15) },
   cancelBtn: {
     backgroundColor: Colors.surfaceMuted, height: scale(52),

@@ -1,3 +1,4 @@
+import { getOrderType, normalizeTaxiOrder, getTaxiTripStatus } from '../utils/unifiedOrders';
 import {
   Modal,
   ScrollView,
@@ -453,9 +454,10 @@ export default function HomeScreen() {
       const formatOrders = (data: any, forceAccepted = false): OrderUI[] => {
         const items = Array.isArray(data) ? data : data?.orders || [];
 
-        return items.map((i: any) => {
-          const isFood = i._orderType === 'food' || i.sourceModel === 'FoodOrder' || !!i.restaurantId;
-          const isParcel = i._orderType === 'parcel' || i.sourceModel === 'LoadRequest' || !!i.loadRequestNumber;
+        return items.map((raw: any) => {
+          const i = normalizeTaxiOrder(raw);
+          const isFood = getOrderType(i) === 'food';
+          const isParcel = getOrderType(i) === 'parcel';
 
           const restaurantLocation =
             i.restaurantId?.location || i.restaurantSnapshot?.location || i.orderDetails?.restaurantId?.location || i.serviceDetails?.restaurantId?.location;
@@ -520,7 +522,7 @@ export default function HomeScreen() {
 
           const orderStatus = i.status || i.orderStatus || 'pending';
           const isAccepted = forceAccepted || i.isAccepted ||
-            ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed'].includes(
+            ['assigned', 'arrived', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed'].includes(
               String(orderStatus).toLowerCase()
             ) ||
             i.driverRequestStatus === 'ACCEPTED';
@@ -533,7 +535,7 @@ export default function HomeScreen() {
             orderStatus,
             isAccepted,
             isSelectedByCustomer: i.isSelectedByCustomer,
-            serviceType: i._orderType || (isFood ? 'food' : isParcel ? 'parcel' : 'other'),
+            serviceType: getOrderType(i),
             customerId: {
               _id: userAuth?._id || userAuth || '',
               fullName: customerFullName,
@@ -544,7 +546,7 @@ export default function HomeScreen() {
             },
             pickup,
             drop,
-            totalAmount: i.totalAmount?.$numberDecimal ?? i.totalAmount ?? i.fare ?? i.finalPrice ?? 0,
+            totalAmount: getOrderType(i) === 'taxi' && i.totalAmount == null ? undefined : i.totalAmount?.$numberDecimal ?? i.totalAmount ?? i.fare ?? i.finalPrice ?? 0,
             package: i.package || {
               itemName: (i.items || i.loadItems || i.orderDetails?.items || i.orderDetails?.loadItems || i.serviceDetails?.items || i.serviceDetails?.loadItems || [])
                 .map((item: any) => item.name ? `${item.name} × ${item.quantity || 1}` : (item.description || 'Item'))
@@ -784,7 +786,7 @@ export default function HomeScreen() {
                       <ActiveOrderCard
                         key={item._id}
                         orderId={item.orderId || item._id}
-                        serviceType={item.serviceId?.serviceType || item?.serviceId?.name}
+                        serviceType={getOrderType(item)}
                         customerName={item.customerId?.fullName || '—'}
                         pickupAddress={item.pickup?.address || '—'}
                         dropAddress={item.drop?.address || '—'}
@@ -804,7 +806,7 @@ export default function HomeScreen() {
                             order: {
                               ...item,
                               tripId: item.tripId,
-                              tripStatus: item.tripStatus || 'CREATED',
+                              tripStatus: getOrderType(item) === 'taxi' ? getTaxiTripStatus(item) : item.tripStatus || 'CREATED',
                             },
                           } as never);
                         }}
@@ -868,7 +870,7 @@ export default function HomeScreen() {
               o =>
                 !o.isAccepted &&
                 o.driverRequestStatus !== 'ACCEPTED' &&
-                !['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'].includes(
+                !['assigned', 'arrived', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled'].includes(
                   String(o.orderStatus || o.status).toLowerCase(),
                 ),
             );
@@ -912,7 +914,7 @@ export default function HomeScreen() {
                         order: {
                           ...item,
                           tripId: item.tripId || item._id,
-                          tripStatus: item.tripStatus || 'CREATED',
+                          tripStatus: getOrderType(item) === 'taxi' ? getTaxiTripStatus(item) : item.tripStatus || 'CREATED',
                         },
                       } as never);
                     }}

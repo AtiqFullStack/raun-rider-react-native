@@ -1,3 +1,5 @@
+import { getOrderType, normalizeTaxiOrder, getTaxiTripStatus, TAXI_STATUS_ACTIONS } from '../utils/unifiedOrders';
+import { AppEvents, EVENTS } from '../utils/events';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import messaging from '@react-native-firebase/messaging';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -95,11 +97,11 @@ export default function RideDetailsScreen() {
   const activeOrderId = normalizeId(order?._id || order?.id);
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [orderDetails, setOrderDetails] = useState<any>(order);
+  const [orderDetails, setOrderDetails] = useState<any>(normalizeTaxiOrder(order));
   const [activeTripId, setActiveTripId] = useState<string | null>(
-    normalizeId(order?.tripId || order?.trip?._id || order?.trip),
+    getOrderType(order) === 'taxi' ? activeOrderId : normalizeId(order?.tripId || order?.trip?._id || order?.trip),
   );
-  const [tripStatus, setTripStatus] = useState<string>(order?.tripStatus || order?.trip?.status || 'CREATED');
+  const [tripStatus, setTripStatus] = useState<string>(getOrderType(order) === 'taxi' ? getTaxiTripStatus(order) : order?.tripStatus || order?.trip?.status || 'CREATED');
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
   const [routeDistance, setRouteDistance] = useState('');
@@ -125,10 +127,13 @@ export default function RideDetailsScreen() {
   const lastHeadingRef = useRef(0);
   const lastCancelKeyRef = useRef<string | null>(null);
   const coordinate = useRef(new AnimatedRegion({ latitude: 0, longitude: 0, latitudeDelta: 0, longitudeDelta: 0 })).current;
-  const currentOrder = orderDetails || order;
+  const currentOrder = useMemo(() => normalizeTaxiOrder(orderDetails || order), [orderDetails, order]);
 console.log(currentOrder)
   // ── Derived values (food order response se map) ────────────────────────────
-  const isFoodOrder = currentOrder && currentOrder.sourceModel=="FoodOrder"
+  const isFoodOrder = getOrderType(currentOrder) === 'food';
+  const isTaxiRide = getOrderType(currentOrder) === 'taxi';
+  const statusBusy = useRef(false);
+  const [statusLoading, setStatusLoading] = useState(false);
   const { updateStatus: updateFoodStatus, cancelOrder: cancelFoodOrder } = useDriverFoodOrderService();
 
   // pickup = restaurant location, drop = deliveryAddress
@@ -146,7 +151,7 @@ console.log(currentOrder)
 
   const customerPhone = isFoodOrder
     ? currentOrder?.userAuthId?.fullPhoneNumber
-    : (currentOrder?.sender?.phone ?? currentOrder?.receiver?.phone);
+    : isTaxiRide ? currentOrder?.customerPhone : (currentOrder?.sender?.phone ?? currentOrder?.receiver?.phone);
 
   const customerName = isFoodOrder
     ? (currentOrder?.deliveryAddress?.contactName ?? currentOrder?.userAuthId?.fullPhoneNumber)
@@ -154,7 +159,7 @@ console.log(currentOrder)
 
   const orderTitle = isFoodOrder
     ? currentOrder?.items?.map((i: any) => `${i.name} x${i.quantity}`).join(', ') || 'Food Order'
-    : getText(currentOrder?.package?.itemName, currentOrder?.itemName, currentOrder?.subCategoryId?.name, 'Package');
+    : isTaxiRide ? getText(currentOrder?.vehicleCategoryId?.name, 'Taxi ride') : getText(currentOrder?.package?.itemName, currentOrder?.itemName, currentOrder?.subCategoryId?.name, 'Package');
 
   const orderInstruction = isFoodOrder
     ? getText(currentOrder?.notes, currentOrder?.deliveryAddress?.landmark, 'No instruction')
@@ -162,12 +167,13 @@ console.log(currentOrder)
 
   const earning = isFoodOrder
     ? Number(currentOrder?.totalAmount?.$numberDecimal ?? currentOrder?.totalAmount ?? 0)
-    : (currentOrder?.finalPrice ?? currentOrder?.myQuote?.price ?? 0);
+    : isTaxiRide ? (currentOrder?.totalAmount == null ? null : Number(currentOrder.totalAmount?.$numberDecimal ?? currentOrder.totalAmount)) : (currentOrder?.finalPrice ?? currentOrder?.myQuote?.price ?? 0);
 
-  const orderNumber = isFoodOrder ? currentOrder?.orderNumber : null;
-  const isCabOrder = currentOrder?.serviceType === 'CAB';
+  const orderNumber = isTaxiRide ? currentOrder?.rideNumber : isFoodOrder ? currentOrder?.orderNumber : null;
+  const isCabOrder = isTaxiRide || currentOrder?.serviceType === 'CAB';
 
   const getButtonText = () => {
+    if (isTaxiRide) return TAXI_STATUS_ACTIONS[tripStatus]?.label || (tripStatus === 'cancelled' ? 'Ride Cancelled' : tripStatus === 'delivered' ? 'Ride Completed' : 'Waiting for assignment');
     if (isFoodOrder) {
       // 🔥 FOOD ORDER: Simple 2-step flow
       // Step 1: ready → Picked Up Order
@@ -259,13 +265,14 @@ console.log(currentOrder)
       const res = await api.get(endpoint);
       const detail = res?.data?.data?.order ?? res?.data?.data ?? res?.data;
       if (detail) {
-        setOrderDetails((prev: any) => ({ ...(prev || {}), ...detail }));
+        setOrderDetails((prev: any) => ({ ...(prev || {}), ...normalizeTaxiOrder(detail) }));
         if (isFoodOrder && detail.orderStatus) setFoodOrderStatus(detail.orderStatus);
       }
-      const tripId = normalizeId(detail?.tripId || detail?.trip?._id || detail?.trip);
+      const taxi = getOrderType(detail) === 'taxi';
+      const tripId = taxi ? activeOrderId : normalizeId(detail?.tripId || detail?.trip?._id || detail?.trip);
       if (tripId) {
         setActiveTripId(tripId);
-        const status = detail?.tripStatus || detail?.trip?.status;
+        const status = taxi ? getTaxiTripStatus(detail) : detail?.tripStatus || detail?.trip?.status;
         if (status) setTripStatus(status);
       }
       return tripId;
@@ -276,6 +283,8 @@ console.log(currentOrder)
 
   // ── Order cancelled handler ────────────────────────────────────────────────
   const handleOrderCancelled = useCallback(async (data?: any) => {
+    const cancelledOrderId = normalizeId(data?.orderId || data?.unifiedOrderId);
+    if (cancelledOrderId && cancelledOrderId !== activeOrderId) return;
     const key = `${data?.orderId || order?._id}:${data?.tripId || order?.tripId}:${data?.cancelledBy}`;
     if (lastCancelKeyRef.current === key) return;
     lastCancelKeyRef.current = key;
@@ -283,18 +292,18 @@ console.log(currentOrder)
     await Storage.removeItem('tripId');
     Toast.show({ type: 'error', text1: data?.title || 'Order Cancelled', text2: data?.reason || 'This order has been cancelled.' });
     navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Home' } }] });
-  }, [navigation, order]);
+  }, [navigation, order, activeOrderId]);
 
   // ── Socket ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!socket || !activeTripId) return;
-    socket.emit('JOIN_TRIP', { tripId: activeTripId, userId: user?._id });
-    const onConnect = () => socket.emit('JOIN_TRIP', { tripId: activeTripId, userId: user?._id });
+    socket.emit('JOIN_TRIP', isTaxiRide ? { orderId: activeOrderId } : { tripId: activeTripId, userId: user?._id });
+    const onConnect = () => socket.emit('JOIN_TRIP', isTaxiRide ? { orderId: activeOrderId } : { tripId: activeTripId, userId: user?._id });
     const onCancelled = (data: any) => handleOrderCancelled(data);
     socket.on('connect', onConnect);
     socket.on('ORDER_CANCELLED', onCancelled);
     return () => { socket.off('connect', onConnect); socket.off('ORDER_CANCELLED', onCancelled); };
-  }, [activeTripId, socket, user?._id, handleOrderCancelled]);
+  }, [activeTripId, socket, user?._id, handleOrderCancelled, isTaxiRide, activeOrderId]);
 
   // ── FCM ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -313,7 +322,7 @@ console.log(currentOrder)
   // ── Fetch route ────────────────────────────────────────────────────────────
   const fetchRoute = useCallback(async (origin?: { latitude: number; longitude: number }) => {
     const loc = origin || driverLocationRef.current;
-    if (!loc?.latitude || !loc?.longitude) return;
+    if (!loc || !Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) return;
 
     // Food order: before DELIVERY_STARTED → driver→restaurant, after → restaurant→drop
     let destLat: number | undefined;
@@ -328,7 +337,7 @@ console.log(currentOrder)
         destLng = pickup?.lng;
       }
     } else {
-      const goToPickup = ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+      const goToPickup = isTaxiRide ? ['assigned', 'arrived'] : ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
       if (goToPickup.includes(tripStatusRef.current)) {
         destLat = pickup?.lat;
         destLng = pickup?.lng;
@@ -338,7 +347,7 @@ console.log(currentOrder)
       }
     }
 
-    if (!destLat || !destLng) return;
+    if (destLat == null || destLng == null || !Number.isFinite(destLat) || !Number.isFinite(destLng)) return;
 
     try {
       const res = await fetch(
@@ -352,12 +361,15 @@ console.log(currentOrder)
       setRouteDuration(leg.duration.text);
       setSteps(leg.steps);
     } catch {}
-  }, [pickup, drop, isFoodOrder]);
+  }, [pickup, drop, isFoodOrder, isTaxiRide]);
 
   // ── Location tracking interval ─────────────────────────────────────────────
   useEffect(() => {
     startDriverLocationTracking(activeTripId, user?._id || null, socket, loc => {
       const pos = { latitude: loc.latitude, longitude: loc.longitude };
+      if (isTaxiRide && activeOrderId && socket?.connected) {
+        socket.emit('DRIVER_LOCATION', { orderId: activeOrderId, ...pos });
+      }
 
       (coordinate as any).timing({ ...pos, duration: 1500, useNativeDriver: false }).start();
       driverLocationRef.current = pos;
@@ -379,7 +391,7 @@ console.log(currentOrder)
     }, 8000);
 
     return () => { clearInterval(routeInterval); stopDriverLocationTracking(); };
-  }, [activeTripId, socket, user?._id, fetchRoute, coordinate]);
+  }, [activeTripId, socket, user?._id, fetchRoute, coordinate, isTaxiRide, activeOrderId]);
 
   // ── Update food order status (PICKED_UP / DELIVERED) ─────────────────────
   const updateFoodOrderStatus = async () => {
@@ -419,7 +431,7 @@ console.log(currentOrder)
 
   // ── Update trip status ─────────────────────────────────────────────────────
   const updateTripStatus = async () => {
-    const nextStatus = TRIP_STATUS_FLOW[tripStatus];
+    const nextStatus = isTaxiRide ? TAXI_STATUS_ACTIONS[tripStatus]?.next : TRIP_STATUS_FLOW[tripStatus];
     const orderIdToUse = activeOrderId || activeTripId || (await fetchTripIdFromOrder());
     if (!orderIdToUse) { Toast.show({ type: 'error', text1: 'Trip ID missing' }); return null; }
     if (!nextStatus) { Toast.show({ type: 'info', text1: 'Trip already completed' }); return null; }
@@ -435,7 +447,21 @@ console.log(nextStatus)
       const finalStatus = updatedOrder?.status || nextStatus;
       const now = new Date().toISOString();
 
-      setTripStatus(nextStatus);
+      setTripStatus(finalStatus);
+      tripStatusRef.current = finalStatus;
+      AppEvents.emit(EVENTS.REFRESH_ORDERS);
+      if (updatedOrder) {
+        setOrderDetails((prev: any) => normalizeTaxiOrder({ ...(prev || {}), ...updatedOrder }));
+      }
+      if (isTaxiRide) {
+        if (finalStatus === 'delivered') {
+          stopDriverLocationTracking();
+          await Storage.removeItem('tripId');
+          Toast.show({ type: 'success', text1: 'Ride completed' });
+          navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Trips' } }] });
+        } else { fetchRoute(); }
+        return finalStatus;
+      }
       if (updatedOrder) {
         setOrderDetails((prev: any) => ({ ...(prev || {}), ...updatedOrder }));
       }
@@ -470,6 +496,10 @@ console.log(nextStatus)
       }
       return nextStatus;
     } catch (e: any) {
+      if (isTaxiRide) {
+        Toast.show({ type: 'error', text1: 'Could not update ride. Please try again.' });
+        return null;
+      }
       // Fallback: Legacy trip update API
       try {
         const res2 = await fetch(`${BASE_URL}/user/trip/update-status`, {
@@ -500,7 +530,7 @@ console.log(nextStatus)
   };
 
   // ── Status button press ────────────────────────────────────────────────────
-  const handleStatusPress = async () => {
+  const performStatusPress = async () => {
     const granted = await requestLocationPermission();
     if (!granted) {
       Alert.alert('Location Required', 'Enable location permission to continue.', [
@@ -515,6 +545,16 @@ console.log(nextStatus)
     if (newStatus === 'DELIVERY_STARTED') { fetchRoute(); }
   };
 
+  const handleStatusPress = async () => {
+    if (statusBusy.current) return;
+    statusBusy.current = true;
+    setStatusLoading(true);
+    try { await performStatusPress(); } finally {
+      statusBusy.current = false;
+      setStatusLoading(false);
+    }
+  };
+
   // ── Cancel order ───────────────────────────────────────────────────────────
   const handleCancelConfirm = async (reason: string) => {
     setCancelModalVisible(false);
@@ -526,6 +566,15 @@ console.log(nextStatus)
     setCancelAlertVisible(false);
     if (!activeOrderId) return;
     try {
+      if (isTaxiRide) {
+        await api.post(`/unifiedorder/${activeOrderId}/cancel`, { cancellationReason: pendingCancelReason });
+        stopDriverLocationTracking();
+        await Storage.removeItem('tripId');
+        AppEvents.emit(EVENTS.REFRESH_ORDERS);
+        Toast.show({ type: 'success', text1: 'Ride cancelled' });
+        navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Trips' } }] });
+        return;
+      }
       if (isFoodOrder) {
         await cancelFoodOrder(activeOrderId, pendingCancelReason);
         Toast.show({ type: 'success', text1: 'Order cancelled' });
@@ -552,10 +601,10 @@ console.log(nextStatus)
 
   // ── Navigate ───────────────────────────────────────────────────────────────
   const openGoogleNavigation = async () => {
-    const goToPickup = ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
+    const goToPickup = isTaxiRide ? ['assigned', 'arrived'] : ['assigned', 'arrived', 'picked_up', 'CREATED', 'START_RIDE', 'ARRIVED_AT_PICKUP', 'LOAD_COLLECTED'];
     const dest = goToPickup.includes(tripStatus) ? pickup : drop;
     const lat = dest?.lat, lng = dest?.lng;
-    if (!lat || !lng) return;
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
     const googleUrl = Platform.select({
       ios: `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`,
       android: `google.navigation:q=${lat},${lng}&mode=d`,
@@ -598,6 +647,7 @@ console.log(nextStatus)
         currentHeading={currentHeading}
         rideStarted={rideStarted}
         isFoodOrder={isFoodOrder}
+        isTaxiRide={isTaxiRide}
         tripStatus={tripStatus}
         style={showSheet ? styles.mapPartial : styles.mapFull}
       />
@@ -627,9 +677,11 @@ console.log(nextStatus)
             earning={earning}
             tripStatus={tripStatus}
             isFoodOrder={isFoodOrder}
+            isTaxiRide={isTaxiRide}
             foodOrderStatus={foodOrderStatus}
-            buttonText={getButtonText()}
-            isCancellable={isFoodOrder ? foodOrderStatus === 'ready' : CANCELLABLE_STATUSES.includes(tripStatus)}
+            statusDisabled={statusLoading || (isTaxiRide && !TAXI_STATUS_ACTIONS[tripStatus])}
+            buttonText={statusLoading ? 'Updating…' : getButtonText()}
+            isCancellable={isTaxiRide ? ['assigned', 'arrived'].includes(tripStatus) : isFoodOrder ? foodOrderStatus === 'ready' : CANCELLABLE_STATUSES.includes(tripStatus)}
             onStatusPress={handleStatusPress}
             onCancel={() => setCancelModalVisible(true)}
             onChat={openChat}

@@ -106,6 +106,7 @@ function AppComp() {
       const initialNotification = await notifee.getInitialNotification();
       if (initialNotification) {
         AppEvents.emit(EVENTS.REFRESH_ORDERS);
+        if (initialNotification.notification?.data?.type === 'TAXI_RIDE_NEW') AppEvents.emit(EVENTS.NEW_TAXI_RIDE);
         // If it was a food order notification, go straight to Trips tab
         if (initialNotification.notification?.data?.type === 'FOOD_ORDER_READY') {
           AppEvents.emit(EVENTS.NEW_FOOD_ORDER);
@@ -130,6 +131,7 @@ function AppComp() {
       await notifee.displayNotification({
         title,
         body,
+        data: remoteMessage.data,
         android: {
           channelId: 'orders',
           importance: AndroidImportance.HIGH,
@@ -140,7 +142,7 @@ function AppComp() {
           },
         },
       });
-      AppEvents.emit('NEW_NOTIFICATION',remoteMessage?.data)
+      AppEvents.emit('NEW_NOTIFICATION', remoteMessage?.data)
 
       AppEvents.emit(EVENTS.REFRESH_ORDERS);
 
@@ -153,7 +155,8 @@ function AppComp() {
           });
         }
       }
-      if (remoteMessage.data.type == "LOAD_REQUEST_NEW") {
+      if (remoteMessage?.data?.type === 'TAXI_RIDE_NEW') AppEvents.emit(EVENTS.NEW_TAXI_RIDE);
+      if (remoteMessage?.data?.type == "LOAD_REQUEST_NEW" || remoteMessage?.data?.type == "TAXI_RIDE_NEW") {
         const nav = navigationRef.current;
         if (nav) {
           nav.dispatch(

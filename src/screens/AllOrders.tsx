@@ -1,3 +1,4 @@
+import { getOrderType, normalizeTaxiOrder, getTaxiTripStatus } from '../utils/unifiedOrders';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -168,10 +169,11 @@ export default function AllOrders() {
       const formatOrders = (data: any): OrderUI[] => {
         const items = Array.isArray(data) ? data : data?.orders || [];
 
-        return items.map((i: any) => {
+        return items.map((raw: any) => {
+          const i = normalizeTaxiOrder(raw);
           // Detect order type
-          const isFoodOrder = i._orderType === 'food' || i.restaurantId || i.orderNumber?.startsWith('R-FD');
-          const isParcelOrder = i._orderType === 'parcel' || i.loadRequestNumber;
+          const isFoodOrder = getOrderType(i) === 'food';
+          const isParcelOrder = getOrderType(i) === 'parcel';
 
           // ── FOOD ORDER: pickup from restaurant, drop from delivery address ──
           let pickup, drop;
@@ -217,7 +219,7 @@ export default function AllOrders() {
           const orderStatus = i.status || i.orderStatus || 'pending';
           const isAccepted = Boolean(
             i.isAccepted ||
-            ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(
+            ['assigned', 'arrived', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(
               String(orderStatus).toLowerCase(),
             )
           );
@@ -230,7 +232,7 @@ export default function AllOrders() {
             orderStatus,
             isAccepted,
             isSelectedByCustomer: i.isSelectedByCustomer,
-            serviceType: i._orderType || i.serviceType || (i.orderNumber?.startsWith('R-FD') || i.restaurantId || i.restaurantSnapshot ? 'food' : i.loadRequestNumber ? 'parcel' : 'other'),
+            serviceType: getOrderType(i),
             customerId: i.customerId || {
               _id: i.userAuthId?._id || i.userAuthId || '',
               fullName: i.deliveryAddress?.contactName || i.userAuthId?.fullName || '',
@@ -353,14 +355,15 @@ export default function AllOrders() {
     return () => subscription.remove();
   }, [fetchDriverOrders]);
 
-  // When a new food order notification arrives, snap to PENDING tab and refresh
+  // New food or taxi requests open the Pending tab.
   useEffect(() => {
-    const subscription = AppEvents.addListener(EVENTS.NEW_FOOD_ORDER, () => {
+    const onNewOrder = () => {
       setActiveTab('PENDING');
       fetchDriverOrders(searchRef.current);
-    });
-
-    return () => subscription.remove();
+    };
+    const food = AppEvents.addListener(EVENTS.NEW_FOOD_ORDER, onNewOrder);
+    const taxi = AppEvents.addListener(EVENTS.NEW_TAXI_RIDE, onNewOrder);
+    return () => { food.remove(); taxi.remove(); };
   }, [fetchDriverOrders]);
 
   const normalizeStatus = (status?: string) =>
@@ -401,6 +404,7 @@ export default function AllOrders() {
     if (!driverAssigned) {
       return false; // Not assigned to this driver yet → stays PENDING
     }
+    return activeStatuses.includes(normalizeStatus(order.status));
   };
 
   const isClosedOrder = (order: OrderUI) =>
@@ -418,7 +422,7 @@ export default function AllOrders() {
       order: {
         ...order,
         tripId: order.tripId || order._id,
-        tripStatus: order.tripStatus || 'CREATED',
+        tripStatus: getOrderType(order) === 'taxi' ? getTaxiTripStatus(order) : order.tripStatus || 'CREATED',
       },
     } as never);
   };
@@ -551,7 +555,9 @@ export default function AllOrders() {
           renderItem={({ item }) => (
             <UnifiedOrderCard
               _id={item._id}
-              _orderType={item.serviceType === 'food' ? 'food' : 'parcel'}
+              _orderType={getOrderType(item)}
+              vehicleCategoryName={(item as any).vehicleCategoryId?.name}
+              passengerName={item.customerId?.fullName}
               orderNumber={item.orderNumber}
               orderStatus={item.orderStatus}
               loadRequestNumber={item?.loadRequestNumber}
@@ -579,8 +585,11 @@ export default function AllOrders() {
               onGoToTrip={() => goToTrip(item)}
               // ── Send Quote: open modal directly with price entry ──
               onSendQuote={() => setSelectedOrderForQuote(item)}
-              onAccept={() => {
-                setCancelledOrderIds(prev => [...prev, item._id]);
+              onAccept={(acceptedOrder) => {
+                setActiveTab('ACTIVE');
+                if (getOrderType(item) === 'taxi') {
+                  goToTrip(normalizeTaxiOrder({ ...item, ...acceptedOrder, status: acceptedOrder?.status || 'assigned', isAccepted: true }));
+                }
                 setOrders(prev => prev.filter(o => o._id !== item._id));
                 fetchDriverOrders(searchRef.current);
               }}

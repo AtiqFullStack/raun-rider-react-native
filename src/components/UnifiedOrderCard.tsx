@@ -1,4 +1,5 @@
 import React from 'react';
+import type { UnifiedOrderType } from '../utils/unifiedOrders';
 import {
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import Toast from 'react-native-toast-message';
 interface UnifiedOrderCardProps {
   // ── Shared fields ──
   _id: string;
-  _orderType: 'food' | 'parcel';  // discriminator
+  _orderType: UnifiedOrderType;  // discriminator
   totalAmount?: number | string;
   currency?: string;
   createdAt: string;
@@ -41,7 +42,9 @@ interface UnifiedOrderCardProps {
   weight?: { value?: number; unit?: string };
 
   // Callbacks
-  onAccept?: () => void;
+  onAccept?: (order?: any) => void;
+  vehicleCategoryName?: string;
+  passengerName?: string;
   onIgnore?: () => void;
   onGoToTrip?: () => void;
   onSendQuote?: () => void;  // called when driver taps Send Quote
@@ -52,6 +55,8 @@ interface UnifiedOrderCardProps {
 
 const SERVICE_CONFIG = {
   food: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
+  taxi: { label: 'TAXI', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
+  other: { label: 'ORDER', bg: '#F3F4F6', color: '#374151', dot: '#374151' },
   parcel: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
 };
 
@@ -66,6 +71,8 @@ function timeAgo(dateStr: string) {
 export default function UnifiedOrderCard({
   _id,
   _orderType,
+  vehicleCategoryName,
+  passengerName,
   orderNumber,
   orderStatus,
   loadRequestNumber,
@@ -100,14 +107,14 @@ export default function UnifiedOrderCard({
   const isFoodOrder = _orderType === 'food';
   const isParcelRequest = _orderType === 'parcel';
 
-  const svc = SERVICE_CONFIG[_orderType] || SERVICE_CONFIG.parcel;
+  const svc = SERVICE_CONFIG[_orderType] || SERVICE_CONFIG.other;
   const trackingNo = isFoodOrder ? orderNumber : (loadRequestNumber || orderNumber);
   const currentStatus = isFoodOrder ? orderStatus : (parcelStatus || orderStatus);
 
   // Active/Assigned order detection
   const isOrderActive = Boolean(
     isAcceptedProp ||
-    ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed', 'in_progress'].includes(
+    ['assigned', 'arrived', 'picked_up', 'in_transit', 'out_for_delivery', 'ready', 'confirmed', 'in_progress'].includes(
       String(currentStatus || '').toLowerCase(),
     )
   );
@@ -122,10 +129,11 @@ export default function UnifiedOrderCard({
   );
 
   // ── Format display data based on type ──
-  const personName = isFoodOrder ? restaurantId?.name : sender?.name;
+  const personName = isFoodOrder ? restaurantId?.name : _orderType === 'taxi' ? passengerName : sender?.name;
 
   // ── Item summary ──
   const getItemSummary = () => {
+    if (_orderType === 'taxi') return vehicleCategoryName || 'Taxi ride';
     if (isFoodOrder && items?.length) {
       const count = items.length;
       const extra = items.reduce((sum, item) => sum + (item.quantity || 0), 0) - count;
@@ -139,7 +147,9 @@ export default function UnifiedOrderCard({
   };
 
   // ── Action handlers ──
+  const acceptingRef = React.useRef(false);
   const handleAccept = async () => {
+    if (acceptingRef.current) return;
     if (!_id) { Toast.show({ type: 'error', text1: 'Order ID missing' }); return; }
 
     // For parcel orders where customer hasn't selected this driver yet → open Send Quote modal directly
@@ -159,16 +169,18 @@ export default function UnifiedOrderCard({
       return;
     }
 
-    // Direct accept: For food orders, OR parcel requests where customer already selected this driver
+    acceptingRef.current = true;
+    // Taxi and food accept directly; parcel accepts after driver selection.
     try {
       setActionLoading('accept');
-      await api.post(`/driver/orders/unified/${_id}/accept`);
-      Toast.show({ type: 'success', text1: 'Order accepted successfully!' });
-      onAccept?.();
+      const response = await api.post(`/driver/orders/unified/${_id}/accept`);
+      Toast.show({ type: 'success', text1: _orderType === 'taxi' ? 'Ride accepted successfully!' : 'Order accepted successfully!' });
+      onAccept?.(response.data?.data?.order || response.data?.order);
     } catch (error: any) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to accept';
       Toast.show({ type: 'error', text1: msg });
     } finally {
+      acceptingRef.current = false;
       setActionLoading(null);
     }
   };
@@ -229,7 +241,7 @@ export default function UnifiedOrderCard({
       {/* ── Meta chips row (includes distance if available) ── */}
       <View style={styles.chipsRow}>
         {/* Show person name ONLY for food or if parcel is converted to order */}
-        {(isFoodOrder || (isParcelRequest && parcelStatus === 'converted_to_order')) && personName && (
+        {(isFoodOrder || _orderType === 'taxi' || (isParcelRequest && parcelStatus === 'converted_to_order')) && personName && (
           <View style={styles.chip}>
             <Text style={styles.chipEmoji}>{isFoodOrder ? '🍽️' : '👤'}</Text>
             <Text style={styles.chipValue} numberOfLines={1}>{personName}</Text>
@@ -237,7 +249,7 @@ export default function UnifiedOrderCard({
         )}
         {getItemSummary() && (
           <View style={styles.chip}>
-            <Text style={styles.chipEmoji}>📦</Text>
+            <Text style={styles.chipEmoji}>{_orderType === 'taxi' ? '🚕' : '📦'}</Text>
             <Text style={styles.chipValue}>{getItemSummary()}</Text>
           </View>
         )}
@@ -306,7 +318,7 @@ export default function UnifiedOrderCard({
             <Text style={styles.acceptBtnText}>
               {actionLoading === 'accept'
                 ? 'Accepting…'
-                : isSelectedByCustomer || isFoodOrder
+                : _orderType === 'taxi' ? 'Accept Ride' : isSelectedByCustomer || isFoodOrder
                   ? 'Accept Order'
                   : 'Send Quote'}
             </Text>

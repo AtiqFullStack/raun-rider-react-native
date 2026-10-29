@@ -12,16 +12,17 @@ interface Props {
   currentHeading: number;
   rideStarted: boolean;
   isFoodOrder?: boolean;
+  isTaxiRide?: boolean;
   tripStatus?: string;
   style?: any;
 }
 
 export default function RideMap({
   mapRef, coordinate, driverLocation, pickup, drop,
-  routeCoords, currentHeading, rideStarted, isFoodOrder, tripStatus, style,
+  routeCoords, currentHeading, rideStarted, isFoodOrder, isTaxiRide, tripStatus, style,
 }: Props) {
   const deliveryStarted = isFoodOrder && (tripStatus === 'DELIVERY_STARTED' || tripStatus === 'DELIVERY_COMPLETED');
-  const showPickupMarker = isFoodOrder ? true : !rideStarted;
+  const showPickupMarker = isFoodOrder ? true : isTaxiRide ? ['assigned', 'arrived'].includes(tripStatus || '') : !rideStarted;
   const showDropMarker = isFoodOrder ? deliveryStarted : true;
   const scooterHeading = useMemo(() => {
     if (!driverLocation) return currentHeading;
@@ -60,7 +61,7 @@ export default function RideMap({
         longitudeDelta: 0.05,
       }}
     >
-      {showPickupMarker && pickup?.lat ? (
+      {showPickupMarker && Number.isFinite(pickup?.lat) && Number.isFinite(pickup?.lng) ? (
         <Marker
           coordinate={{ latitude: pickup.lat, longitude: pickup.lng }}
           anchor={{ x: 0.5, y: 0.5 }}
@@ -74,7 +75,7 @@ export default function RideMap({
         </Marker>
       ) : null}
 
-      {showDropMarker && drop?.lat ? (
+      {showDropMarker && Number.isFinite(drop?.lat) && Number.isFinite(drop?.lng) ? (
         <Marker
           coordinate={{ latitude: drop.lat, longitude: drop.lng }}
           anchor={{ x: 0.5, y: 0.5 }}

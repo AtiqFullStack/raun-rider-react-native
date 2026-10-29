@@ -1,3 +1,4 @@
+import { getOrderType, normalizeTaxiOrder, getTaxiTripStatus } from '../utils/unifiedOrders';
 import {
   Modal,
   View,
@@ -9,7 +10,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Colors } from '../constants/Colors';
 import { scale, fontScale, verticalScale } from '../utils/scaling';
 import useAxios from '../hooks/useAxios';
@@ -50,6 +51,7 @@ function formatMoney(value: any, currency = 'BND') {
 const SERVICE_CONFIG: Record<string, { label: string; bg: string; color: string; dot: string }> = {
   food: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
   FOOD: { label: 'FOOD', bg: '#FFF3E0', color: '#E65100', dot: '#E65100' },
+  taxi: { label: 'TAXI', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
   CAB: { label: 'CAB', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
   cab: { label: 'CAB', bg: '#E8F4FD', color: '#1565C0', dot: '#1565C0' },
   parcel: { label: 'PARCEL', bg: '#F3E8FF', color: '#6D28D9', dot: '#6D28D9' },
@@ -118,6 +120,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
   const navigation = useNavigation<any>();
 
   const [loading, setLoading] = useState(false);
+  const acceptingRef = useRef(false);
   const [accepting, setAccepting] = useState(false);
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
@@ -165,14 +168,15 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
   if (!order) return null;
 
   // Merge prop order and fetched orderDetail
-  const merged: any = {
+  const merged: any = normalizeTaxiOrder({
     ...order,
     ...(orderDetail || {}),
     orderDetails: orderDetail?.orderDetails || order?.orderDetails,
-  };
+  });
 
+  const isTaxi = getOrderType(merged) === 'taxi';
   const isCab = merged.serviceType === 'CAB' || merged.serviceType === 'cab';
-  const isFoodOrder =
+  const isFoodOrder = !isTaxi && (
     merged.sourceModel === 'FoodOrder' ||
     merged._orderType === 'food' ||
     merged.serviceType === 'food' ||
@@ -181,11 +185,11 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     merged.serviceId?.serviceType === 'food' ||
     merged.serviceId?.name?.toLowerCase().includes('food') ||
     !!merged.restaurantId ||
-    !!merged.orderDetails?.restaurantId;
+    !!merged.orderDetails?.restaurantId);
 
   const isParcelOrder =
     !isFoodOrder &&
-    !isCab &&
+    !isCab && !isTaxi &&
     (merged.sourceModel === 'LoadRequest' ||
       merged._orderType === 'parcel' ||
       merged.serviceType === 'parcel' ||
@@ -197,39 +201,45 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
       merged.loadItems !== undefined ||
       merged.orderDetails?.loadItems !== undefined);
 
-  const rawStatus = String(merged.orderStatus || merged.status || 'pending').toLowerCase();
-  const isActive =
+  const rawStatus = String(merged.status || merged.orderStatus || 'pending').toLowerCase();
+  const isClosed = ['delivered', 'completed', 'cancelled', 'canceled', 'rejected'].includes(rawStatus);
+  const isActive = !isClosed && (
     merged.isAccepted ||
-    ['assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(rawStatus);
+    ['assigned', 'arrived', 'picked_up', 'in_transit', 'out_for_delivery', 'confirmed', 'ready'].includes(rawStatus));
 
   const isSelectedByCustomer =
     merged.isSelectedByCustomer ||
     ((rawStatus === 'waiting' || rawStatus === 'pending') && !!merged.driverId);
 
-  const svcKey = isFoodOrder ? 'food' : isCab ? 'CAB' : isParcelOrder ? 'parcel' : (merged.serviceId?.serviceType || merged.serviceId?.name || '');
+  const svcKey = isTaxi ? 'taxi' : isFoodOrder ? 'food' : isCab ? 'CAB' : isParcelOrder ? 'parcel' : (merged.serviceId?.serviceType || merged.serviceId?.name || '');
   const svc = SERVICE_CONFIG[svcKey] || SERVICE_CONFIG[svcKey.toLowerCase()] || DEFAULT_SVC;
 
   const handleAcceptFood = async () => {
+    if (acceptingRef.current) return;
+    acceptingRef.current = true;
     try {
       setAccepting(true);
-      await api.post(`/driver/orders/unified/${order._id}/accept`);
-      Toast.show({ type: 'success', text1: 'Order accepted successfully!' });
+      const response = await api.post(`/driver/orders/unified/${order._id}/accept`);
+      const accepted = response.data?.data?.order || response.data?.order;
+      Toast.show({ type: 'success', text1: isTaxi ? 'Ride accepted successfully!' : 'Order accepted successfully!' });
       AppEvents.emit(EVENTS.REFRESH_ORDERS);
       onClose();
       await StorageService.setItem('tripId', order._id);
       navigation.navigate('RideDetails', {
         order: {
           ...merged,
-          status: 'assigned',
+          ...accepted,
+          status: accepted?.status || 'assigned',
           isAccepted: true,
           tripId: merged.tripId || merged._id,
-          tripStatus: 'ASSIGNED',
+          tripStatus: accepted?.status || 'assigned',
         },
       });
     } catch (error: any) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to accept order';
       Toast.show({ type: 'error', text1: msg });
     } finally {
+      acceptingRef.current = false;
       setAccepting(false);
     }
   };
@@ -254,6 +264,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     } catch (e: any) {
       Toast.show({ type: 'error', text1: e?.message || 'Failed to accept' });
     } finally {
+      acceptingRef.current = false;
       setAccepting(false);
     }
   };
@@ -265,7 +276,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
       order: {
         ...merged,
         tripId: merged.tripId || merged._id,
-        tripStatus: merged.tripStatus || 'CREATED',
+        tripStatus: isTaxi ? getTaxiTripStatus(merged) : merged.tripStatus || 'CREATED',
       },
     });
   };
@@ -315,6 +326,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
     'Customer';
 
   const customerPhone =
+    merged.customerPhone ||
     merged.customerId?.phoneNumber ||
     merged.customerId?.fullPhoneNumber ||
     merged.userAuthId?.phoneNumber ||
@@ -584,8 +596,15 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             )}
 
             {/* ── CAB Passenger ── */}
-            {isCab && (
+            {(isCab || isTaxi) && (
               <Section title="PASSENGER">
+                {isTaxi && <InfoRow label="Vehicle category" value={merged.vehicleCategoryId?.name} />}
+                {isTaxi && <InfoRow label="Seats" value={merged.vehicleCategoryId?.seatingCapacity != null ? String(merged.vehicleCategoryId.seatingCapacity) : undefined} />}
+                {isTaxi && <InfoRow label="Notes" value={merged.notes} />}
+               
+               {/* dont't show if  order not accepted /api/driver/orders/unified/6ae310732f3f559d02507225/accept */}
+               
+               <>
                 <InfoRow label="Name" value={merged.passenger?.name || customerName} />
                 <InfoRow
                   label="Phone"
@@ -595,6 +614,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                       : customerPhone
                   }
                 />
+               </>
                 {!!merged.price?.distanceKm && (
                   <InfoRow label="Distance" value={`${merged.price.distanceKm} km`} />
                 )}
@@ -646,7 +666,9 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
             </TouchableOpacity>
 
             {/* Active order: Go to Trip */}
-            {isActive ? (
+            {isClosed ? (
+              <Text style={styles.loadingText}>{isTaxi ? 'Ride closed' : 'Order closed'}</Text>
+            ) : isActive ? (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={handleGoToTrip}
@@ -663,7 +685,7 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 activeOpacity={0.8}
               >
                 <Text style={styles.primaryBtnText}>
-                  {accepting ? 'Accepting…' : 'Accept Order'}
+                  {accepting ? 'Accepting…' : isTaxi ? 'Accept Ride' : 'Accept Order'}
                 </Text>
               </TouchableOpacity>
             ) : isFoodOrder ? (
@@ -675,14 +697,14 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
                 activeOpacity={0.8}
               >
                 <Text style={styles.primaryBtnText}>
-                  {accepting ? 'Accepting…' : 'Accept Order'}
+                  {accepting ? 'Accepting…' : isTaxi ? 'Accept Ride' : 'Accept Order'}
                 </Text>
               </TouchableOpacity>
-            ) : isCab ? (
+            ) : (isCab || isTaxi) ? (
               /* CAB: Accept */
               <TouchableOpacity
                 style={[styles.primaryBtn, accepting && { opacity: 0.7 }]}
-                onPress={handleAcceptCab}
+                onPress={isTaxi ? handleAcceptFood : handleAcceptCab}
                 disabled={accepting}
                 activeOpacity={0.8}
               >

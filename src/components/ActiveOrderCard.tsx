@@ -25,6 +25,7 @@ interface ActiveOrderCardProps {
 }
 
 const STATUS_DISPLAY: Record<string, { label: string; bg: string; color: string; dot: string }> = {
+  arrived:          { label: 'Arrived at Pickup', bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
   assigned:         { label: 'Assigned',         bg: '#EAF1FF', color: '#2563EB', dot: '#2563EB' },
   picked_up:        { label: 'Picked Up',        bg: '#FEF3C7', color: '#D97706', dot: '#F59E0B' },
   in_transit:       { label: 'In Transit',       bg: '#E7F7F0', color: '#078C62', dot: '#10B981' },
@@ -43,7 +44,7 @@ const DEFAULT_STATUS = { label: 'Active', bg: '#EAF1FF', color: '#2563EB', dot: 
 
 const SERVICE_EMOJI: Record<string, string> = {
   food: '🍔', FOOD: '🍔',
-  CAB: '🚖',
+  CAB: '🚖', taxi: '🚕',
   parcel: '📦', PARCEL: '📦',
 };
 
