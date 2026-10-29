@@ -167,7 +167,7 @@ console.log(currentOrder)
 
   const earning = isFoodOrder
     ? Number(currentOrder?.totalAmount?.$numberDecimal ?? currentOrder?.totalAmount ?? 0)
-    : isTaxiRide ? (currentOrder?.totalAmount == null ? null : Number(currentOrder.totalAmount?.$numberDecimal ?? currentOrder.totalAmount)) : (currentOrder?.finalPrice ?? currentOrder?.myQuote?.price ?? 0);
+    : isTaxiRide ? (currentOrder?.driverPayout == null ? null : Number(currentOrder.driverPayout)) : (currentOrder?.finalPrice ?? currentOrder?.myQuote?.price ?? 0);
 
   const orderNumber = isTaxiRide ? currentOrder?.rideNumber : isFoodOrder ? currentOrder?.orderNumber : null;
   const isCabOrder = isTaxiRide || currentOrder?.serviceType === 'CAB';
@@ -675,6 +675,9 @@ console.log(nextStatus)
             orderNumber={orderNumber}
             customerName={customerName}
             earning={earning}
+            currency={currentOrder?.currency}
+            taxiFare={isTaxiRide ? currentOrder?.totalAmount : undefined}
+            platformFee={isTaxiRide ? currentOrder?.platformFee : undefined}
             tripStatus={tripStatus}
             isFoodOrder={isFoodOrder}
             isTaxiRide={isTaxiRide}

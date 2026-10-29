@@ -15,6 +15,9 @@ interface Props {
   orderNumber?: string | null;
   customerName?: string;
   earning: number | null;
+  currency?: string;
+  taxiFare?: number | null;
+  platformFee?: number | null;
   isTaxiRide?: boolean;
   statusDisabled?: boolean;
   tripStatus: string;
@@ -31,7 +34,7 @@ interface Props {
 
 export default function TripInfoSheet({
   pickup, drop, orderTitle, orderInstruction, orderNumber, customerName,
-  earning, isTaxiRide, statusDisabled, buttonText, isCancellable, isFoodOrder, foodOrderStatus,
+  earning, currency = 'BND', taxiFare, platformFee, isTaxiRide, statusDisabled, buttonText, isCancellable, isFoodOrder, foodOrderStatus,
   onStatusPress, onCancel, onChat, onCall, onNavigate,
 }: Props) {
   const s = String(foodOrderStatus || '').toLowerCase();
@@ -107,10 +110,16 @@ export default function TripInfoSheet({
         <Text style={styles.detailValue}>{orderInstruction}</Text>
       </View>
 
+      {isTaxiRide && taxiFare != null && <View style={[styles.card, styles.earningRow]}>
+        <Text style={styles.earningLabel}>Ride fare</Text><Text style={styles.earningAmount}>{currency} {Number(taxiFare).toFixed(2)}</Text>
+      </View>}
+      {isTaxiRide && platformFee != null && <View style={[styles.card, styles.earningRow]}>
+        <Text style={styles.earningLabel}>Platform fee</Text><Text style={styles.detailValue}>{currency} {Number(platformFee).toFixed(2)}</Text>
+      </View>}
       {/* Earning */}
       {earning != null && Number.isFinite(earning) && <View style={[styles.card, styles.earningRow]}>
-        <Text style={styles.earningLabel}>Earning</Text>
-        <Text style={styles.earningAmount}>${earning.toFixed(2)}</Text>
+        <Text style={styles.earningLabel}>{isTaxiRide ? 'Your earnings' : 'Earning'}</Text>
+        <Text style={styles.earningAmount}>{isTaxiRide ? `${currency} ` : '$'}{earning.toFixed(2)}</Text>
       </View>}
 
       {/* Buttons */}

@@ -46,3 +46,13 @@ describe('unified taxi orders', () => {
     expect(TAXI_STATUS_ACTIONS.cancelled).toBeUndefined();
   });
 });
+
+it('restores saved taxi fare and payout from ride details while preserving a zero fee', () => {
+  const order = normalizeTaxiOrder({ sourceModel: 'TaxiRide', orderDetails: {
+    totalAmount: 25, currency: 'BND', pricing: { totalAmount: 25, driverPayout: 22.5, platformFee: 2.5 },
+  } });
+  expect(order).toMatchObject({ totalAmount: 25, currency: 'BND', driverPayout: 22.5, platformFee: 2.5 });
+  const free = normalizeTaxiOrder({ sourceModel: 'TaxiRide', totalAmount: 0, driverPayout: 0, platformFee: 0,
+    orderDetails: { totalAmount: 25, pricing: { driverPayout: 22.5, platformFee: 2.5 } } });
+  expect(free).toMatchObject({ totalAmount: 0, driverPayout: 0, platformFee: 0 });
+});

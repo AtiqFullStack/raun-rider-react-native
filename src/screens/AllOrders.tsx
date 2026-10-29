@@ -571,7 +571,7 @@ export default function AllOrders() {
               receiver={item.receiver}
               loadItems={item.loadItems}
               weight={item.weight}
-              totalAmount={item.totalAmount ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount) : undefined}
+              totalAmount={item.totalAmount != null ? Number(item.totalAmount?.$numberDecimal ?? item.totalAmount) : undefined}
               currency={item.currency || 'BND'}
               createdAt={item.createdAt}
               assignedDriverId={item.assignedDriverId}

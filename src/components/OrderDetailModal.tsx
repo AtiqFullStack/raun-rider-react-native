@@ -437,6 +437,10 @@ export default function OrderDetailModal({ visible, order, onClose, sentQuotes =
               )}
             </View>
 
+            {isTaxi && merged.driverPayout != null && <View style={{ paddingHorizontal: 20, paddingVertical: 8 }}>
+              <Text style={{ color: Colors.text }}>Your earnings: {formatMoney(merged.driverPayout, merged.currency)}</Text>
+              <Text style={{ color: Colors.textMuted }}>Platform fee: {formatMoney(merged.platformFee ?? 0, merged.currency)}</Text>
+            </View>}
             {/* ── Customer Selected You Alert ── */}
             {isSelectedByCustomer && !isActive && (
               <View style={styles.selectedAlertBox}>

@@ -23,6 +23,11 @@ export function normalizeTaxiOrder(order: any) {
   return {
     ...order,
     _orderType: 'taxi', serviceType: 'taxi',
+    totalAmount: order.totalAmount ?? ride.totalAmount ?? null,
+    currency: order.currency || ride.currency || 'BND',
+    pricing: order.pricing || ride.pricing,
+    driverPayout: order.driverPayout ?? ride.pricing?.driverPayout ?? null,
+    platformFee: order.platformFee ?? ride.pricing?.platformFee ?? null,
     rideNumber: ride.rideNumber || order.rideNumber,
     orderNumber: ride.rideNumber || order.rideNumber || order.orderNumber,
     vehicleCategoryId: ride.vehicleCategoryId || order.vehicleCategoryId,

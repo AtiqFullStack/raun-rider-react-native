@@ -23,7 +23,7 @@ export default function RideMap({
 }: Props) {
   const deliveryStarted = isFoodOrder && (tripStatus === 'DELIVERY_STARTED' || tripStatus === 'DELIVERY_COMPLETED');
   const showPickupMarker = isFoodOrder ? true : isTaxiRide ? ['assigned', 'arrived'].includes(tripStatus || '') : !rideStarted;
-  const showDropMarker = isFoodOrder ? deliveryStarted : true;
+  const showDropMarker = isFoodOrder ? deliveryStarted : isTaxiRide ? ['picked_up', 'in_transit', 'delivered'].includes(tripStatus || '') : true;
   const scooterHeading = useMemo(() => {
     if (!driverLocation) return currentHeading;
 
